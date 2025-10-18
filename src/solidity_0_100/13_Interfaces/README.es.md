@@ -1,3 +1,13 @@
+# Contexto del Proyecto
+
+Este proyecto demuestra el uso de interfaces en Solidity. Incluye un contrato `Counter`, una interfaz `ICounter` y un contrato `CallInterface` que interactúa con el contrato `Counter` a través de la interfaz.
+
+## Aprendizajes Clave
+
+- Cómo definir y usar interfaces en Solidity.
+- Cómo interactuar con un contrato a través de su interfaz.
+- El concepto de separación de preocupaciones en el desarrollo de contratos inteligentes.
+
 # Ejemplo de Interfaces en Solidity
 
 Este proyecto proporciona un ejemplo simple de cómo usar interfaces en Solidity para interactuar con contratos inteligentes.
