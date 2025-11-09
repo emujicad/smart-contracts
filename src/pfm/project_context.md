@@ -11,6 +11,7 @@ Este proyecto consiste en un único contrato inteligente de Solidity, `SupplyCha
     -   Se ha creado un archivo `README.md` que describe la estructura y funcionalidad del proyecto.
     -   Se ha actualizado el archivo `TODO.md` con las tareas pendientes derivadas del análisis.
     -   Se ha complementado el archivo `SupplyChain_NatSpec_Documentation.md` para que sirva como una guía de referencia rápida de la documentación del contrato.
+    -   Se ha creado una guía de pruebas (`test_foundry.md`) que explica cómo simular usuarios y los flujos de trabajo de testing en Foundry.
 -   **Contrato Principal (`SupplyChain.sol`):**
     -   El contrato es funcional y robusto.
     -   Implementa características avanzadas como control de roles, pausabilidad, propiedad transferible y protección contra re-entrancy.

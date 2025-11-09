@@ -7,6 +7,7 @@ Este proyecto contiene un contrato inteligente de Solidity (`SupplyChain.sol`) d
 -   `SupplyChain.sol`: El código fuente principal del contrato inteligente. La documentación NatSpec oficial reside aquí.
 -   `SupplyChain_NatSpec_Documentation.md`: Un documento complementario que resume la estructura y la documentación NatSpec del contrato.
 -   `recomendaciones.md`: Un archivo con un análisis detallado y recomendaciones de mejora para el contrato.
+-   `test_foundry.md`: Una guía detallada sobre cómo escribir pruebas en Foundry, simular usuarios y entender los flujos de trabajo de testing.
 -   `TODO.md`: Un archivo que lista las tareas pendientes y futuras mejoras para el proyecto.
 
 ## Funcionalidades del Contrato
