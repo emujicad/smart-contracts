@@ -4,8 +4,8 @@ Este archivo se basa en el análisis inicial y las recomendaciones generadas en 
 
 ## Crítico / Próximos Pasos
 
+- [ ] **Refactorizar `require` a Errores Personalizados:** Reemplazar todos los `require` con mensajes de texto por condicionales `if` y `revert` con errores personalizados para optimizar gas y mejorar la legibilidad. (Ver guía detallada en `recomendaciones.md`).
 - [ ] **Fijar Versión del Compilador:** Cambiar `pragma solidity ^0.8.13;` a una versión fija (ej. `pragma solidity 0.8.24;`) para garantizar la estabilidad y previsibilidad del contrato.
-- [ ] **Refactorizar Modificadores a Errores Personalizados:** Reemplazar los `require(condicion, "mensaje")` en modificadores como `onlyOwner`, `onlyTokenCreators`, etc., por errores personalizados (`revert Unauthorized()`) para consistencia y optimización de gas.
 - [ ] **Añadir Advertencias de Gas en Funciones con Bucles:** Actualizar la documentación NatSpec de `getUserTokens` y `getUserTransfers` para advertir explícitamente que son funciones de alto coste de gas y no deben ser llamadas en transacciones on-chain a gran escala.
 - [ ] **Revisar Visibilidad de Funciones:** Cambiar la visibilidad de `public` a `external` en funciones que solo se llaman desde fuera del contrato (ej. `requestUserRole`, `createToken`) para optimizar gas.
 

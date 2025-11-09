@@ -73,3 +73,133 @@
 El contrato es de una calidad muy alta, especialmente para un proyecto formativo. Demuestra un sólido entendimiento de los patrones de diseño de Solidity, la seguridad y la importancia de la documentación. Las recomendaciones se centran en optimizaciones finas y en reforzar la conciencia sobre las limitaciones de la EVM, particularmente en lo que respecta al coste del gas en bucles.
 
 ¡Felicidades por un excelente trabajo!
+
+### 5. Guía de Refactorización: `require` a Errores Personalizados
+
+Para mejorar aún más la eficiencia del gas y la legibilidad, se recomienda reemplazar todos los `require` con mensajes de texto por `if` y `revert` con errores personalizados.
+
+#### 5.1. Nuevos Errores Personalizados a Añadir
+
+Añade estas definiciones junto a tus otros errores personalizados:
+
+```solidity
+error ContractPaused(); // El contrato está en pausa.
+error ContractNotPaused(); // El contrato no está en pausa.
+error UserDoesNotExist(); // El usuario no existe.
+error InvalidUserId(); // El ID de usuario no es válido.
+error InvalidAmount(); // La cantidad debe ser mayor que cero.
+error InsufficientBalance(uint256 available, uint256 required); // Saldo insuficiente.
+error TransferDoesNotExist(); // La transferencia no existe.
+error TransferNotPending(); // La transferencia no está en estado pendiente.
+```
+
+#### 5.2. Cambios Específicos en el Código
+
+**En Modificadores:**
+
+1.  **`modifier onlyTokenCreators()`**
+    *   **Antes:**
+        ```solidity
+        require(msg.sender != address(0), "Direccion invalida para hacer esta solicitud");
+        require(msg.sender != owner, "El dueno del contrato no puede crear tokens");
+        require((user.role == UserRole.Producer || user.role == UserRole.Factory) && user.status == UserStatus.Approved, "Sin permisos para crear tokens");  
+        ```
+    *   **Después:**
+        ```solidity
+        // La comprobación de address(0) es innecesaria, msg.sender nunca es cero.
+        if (msg.sender == owner) revert Unauthorized();
+        if (!((user.role == UserRole.Producer || user.role == UserRole.Factory) && user.status == UserStatus.Approved)) revert Unauthorized();
+        ```
+
+2.  **`modifier onlyTransfersAllowed()`**
+    *   **Antes:** `require(user.status == UserStatus.Approved && (user.role == UserRole.Producer || user.role == UserRole.Factory || user.role == UserRole.Retailer), "No autorizado para transferir tokens");`
+    *   **Después:** `if (!(user.status == UserStatus.Approved && (user.role == UserRole.Producer || user.role == UserRole.Factory || user.role == UserRole.Retailer))) revert Unauthorized();`
+
+3.  **`modifier onlyReceiverAllowed()`**
+    *   **Antes:** `require(user.status == UserStatus.Approved && (user.role == UserRole.Factory || user.role == UserRole.Retailer || user.role == UserRole.Consumer), "No autorizado para recibir o rechazar tokens");`
+    *   **Después:** `if (!(user.status == UserStatus.Approved && (user.role == UserRole.Factory || user.role == UserRole.Retailer || user.role == UserRole.Consumer))) revert Unauthorized();`
+
+4.  **`modifier onlyPauser()`**
+    *   **Antes:** `require(pauseRoles[msg.sender] == PauseRole.Pauser || msg.sender == owner, "No autorizado para pausar");`
+    *   **Después:** `if (pauseRoles[msg.sender] != PauseRole.Pauser && msg.sender != owner) revert Unauthorized();`
+
+5.  **`modifier whenNotPaused()`**
+    *   **Antes:** `require(!paused, "Contrato pausado");`
+    *   **Después:** `if (paused) revert ContractPaused();`
+
+6.  **`modifier whenPaused()`**
+    *   **Antes:** `require(paused, "Contrato no esta pausado");`
+    *   **Después:** `if (!paused) revert ContractNotPaused();`
+
+**En Funciones:**
+
+1.  **`function initiateOwnershipTransfer(address newOwner)`**
+    *   **Antes:** `require(newOwner != address(0), "Nueva direccion invalida");`
+    *   **Después:** `if (newOwner == address(0)) revert InvalidAddress();`
+
+2.  **`function acceptOwnership()`**
+    *   **Antes:** `require(msg.sender == pendingOwner, "Solo nuevo owner puede aceptar");`
+    *   **Después:** `if (msg.sender != pendingOwner) revert Unauthorized();`
+
+3.  **`function changeStatusUser(address userAddress, ...)`**
+    *   **Antes:** `require(addressToUserId[userAddress] != 0, "Usuario no existe");`
+    *   **Después:** `if (addressToUserId[userAddress] == 0) revert UserDoesNotExist();`
+
+4.  **`function getUserInfoById(uint userId)`**
+    *   **Antes:** `require(userId > 0 && userId < nextUserId, "User ID invalido");`
+    *   **Después:** `if (userId == 0 || userId >= nextUserId) revert InvalidUserId();`
+
+5.  **`function isAdmin(address userAddress)`**
+    *   **Antes:** `require(userAddress != address(0), "Direccion invalida para hacer esta solicitud");`
+    *   **Después:** `if (userAddress == address(0)) revert InvalidAddress();`
+
+6.  **`function getTokenBalance(uint tokenId, ...)`**
+    *   **Antes:** `require(userAddress != address(0), "Direccion invalida para hacer esta solicitud");`
+    *   **Después:** `if (userAddress == address(0)) revert InvalidAddress();`
+
+7.  **`function transfer(address to, uint tokenId, uint amount)`**
+    *   **Antes:**
+        ```solidity
+        require(to != address(0), "Direccion destino invalida");
+        require(amount > 0, "Cantidad debe ser mayor que cero");
+        // ...
+        require(senderBalance >= amount, "Saldo insuficiente para transferencia");
+        ```
+    *   **Después:**
+        ```solidity
+        if (to == address(0)) revert InvalidAddress();
+        if (amount == 0) revert InvalidAmount();
+        // ...
+        uint256 senderBalance = token.balance[msg.sender];
+        if (senderBalance < amount) revert InsufficientBalance(senderBalance, amount);
+        ```
+
+8.  **`function acceptTransfer(uint transferId)`**
+    *   **Antes:**
+        ```solidity
+        require(transfers[transferId].id != 0, "Transferencia inexistente");
+        Transfer storage transferItem = transfers[transferId];        
+        require(transferItem.status == TransferStatus.Pending, "Transfer not pending");
+        require(transferItem.to == msg.sender, "Solo receptor puede aceptar transferencias");
+        ```
+    *   **Después:**
+        ```solidity
+        if (transfers[transferId].id == 0) revert TransferDoesNotExist();
+        Transfer storage transferItem = transfers[transferId];        
+        if (transferItem.status != TransferStatus.Pending) revert TransferNotPending();
+        if (transferItem.to != msg.sender) revert Unauthorized();
+        ```
+
+9.  **`function rejectTransfer(uint transferId)`**
+    *   **Antes:**
+        ```solidity
+        require(transferItem.status == TransferStatus.Pending, "Transfer not pending");
+        require(transferItem.to == msg.sender, "Solo receptor puede rechazar transferencias");
+        ```
+    *   **Después:**
+        ```solidity
+        // La comprobación de existencia ya la hace el modifier
+        Transfer storage transferItem = transfers[transferId];
+        if (transferItem.status != TransferStatus.Pending) revert TransferNotPending();
+        if (transferItem.to != msg.sender) revert Unauthorized();
+        ```
