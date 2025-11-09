@@ -4,8 +4,9 @@ Este proyecto contiene un contrato inteligente de Solidity (`SupplyChain.sol`) d
 
 ## Estructura del Proyecto
 
--   `SupplyChain.sol`: El código fuente principal del contrato inteligente. Gestiona usuarios, roles, tokens (activos) y transferencias entre ellos.
--   `recomendaciones.md`: Un archivo con un análisis detallado y recomendaciones de mejora para el contrato `SupplyChain.sol`, generado por un experto en Solidity.
+-   `SupplyChain.sol`: El código fuente principal del contrato inteligente. La documentación NatSpec oficial reside aquí.
+-   `SupplyChain_NatSpec_Documentation.md`: Un documento complementario que resume la estructura y la documentación NatSpec del contrato.
+-   `recomendaciones.md`: Un archivo con un análisis detallado y recomendaciones de mejora para el contrato.
 -   `TODO.md`: Un archivo que lista las tareas pendientes y futuras mejoras para el proyecto.
 
 ## Funcionalidades del Contrato

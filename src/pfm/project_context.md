@@ -9,7 +9,8 @@ Este proyecto consiste en un único contrato inteligente de Solidity, `SupplyCha
 -   **Análisis de Código:** Se ha realizado un análisis exhaustivo del contrato `SupplyChain.sol`. Las conclusiones y sugerencias de mejora se han documentado en `recomendaciones.md`.
 -   **Documentación:**
     -   Se ha creado un archivo `README.md` que describe la estructura y funcionalidad del proyecto.
-    -   Se ha actualizado el archivo `TODO.md` con las tareas pendientes derivadas del análisis, incluyendo optimizaciones de gas, mejoras de seguridad y nuevas funcionalidades sugeridas.
+    -   Se ha actualizado el archivo `TODO.md` con las tareas pendientes derivadas del análisis.
+    -   Se ha complementado el archivo `SupplyChain_NatSpec_Documentation.md` para que sirva como una guía de referencia rápida de la documentación del contrato.
 -   **Contrato Principal (`SupplyChain.sol`):**
     -   El contrato es funcional y robusto.
     -   Implementa características avanzadas como control de roles, pausabilidad, propiedad transferible y protección contra re-entrancy.
