@@ -19,6 +19,7 @@ El contrato `SupplyChain.sol` implementa las siguientes características:
 -   **Transferencia de Tokens:** Implementa un flujo de transferencia de dos pasos (solicitud y aceptación/rechazo) para mover tokens entre usuarios.
 -   **Seguridad:**
     -   Control de acceso basado en roles y estado del usuario.
+    -   Uso de errores personalizados en lugar de `require` para un control de errores consistente y optimizado en gas.
     -   Propiedad del contrato transferible (`Ownable`).
     -   Funcionalidad de Pausa (`Pausable`) para detener el contrato en caso de emergencia.
     -   Protección contra ataques de re-entrancy.
