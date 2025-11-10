@@ -3,9 +3,8 @@
 #### 1. Seguridad
 
 *   **Versión de Pragma:**
-    *   **Observación:** Usas `pragma solidity ^0.8.13;`. El carácter `^` permite que el contrato se compile con cualquier versión desde `0.8.13` hasta `0.8.26` (la última al momento de este análisis), pero no con `0.9.0`.
-    *   **Recomendación:** Para contratos destinados a producción, es una práctica recomendada **fijar la versión del compilador**. Esto evita que una nueva versión del compilador con cambios sutiles (o incluso bugs) pueda afectar el comportamiento de tu contrato.
-    *   **Sugerencia:** Cambia el pragma a una versión específica, por ejemplo: `pragma solidity 0.8.24;`.
+    *   **Observación:** Se utilizaba un pragma flotante (`^0.8.13`).
+    *   **Acción Tomada:** Se ha fijado la versión del compilador a `pragma solidity 0.8.24;`. Esta es una práctica de seguridad crucial que asegura que el contrato se comporte de manera predecible y no sea afectado por futuros cambios en el compilador.
 
 *   **Control de Acceso:**
     *   **Observación:** Inicialmente, el contrato utilizaba `require(condicion, "mensaje")` para el control de acceso.
@@ -17,16 +16,16 @@
 
 #### 2. Optimización de Gas
 
+*   **Visibilidad de Funciones y Variables (Acción Tomada):**
+    *   **Observación:** Varias funciones que solo necesitan ser accedidas externamente estaban declaradas como `public`.
+    *   **Acción Tomada:** Se cambió la visibilidad de `public` a `external` en todas las funciones que no son llamadas internamente por el contrato (como `requestUserRole`, `createToken`, `transfer`, etc.). Esta acción optimiza el consumo de gas.
+    *   **Estado Actual:** La configuración de visibilidad del contrato es ahora óptima. No se requieren cambios adicionales.
+
 *   **Bucles en Funciones de Lectura (`view`):**
     *   **Observación:** Las funciones `getUserTokens` y `getUserTransfers` iteran sobre todos los tokens y transferencias (`for (uint i = 1; i < nextTokenId; i++)`).
     *   **Problema:** Este patrón es muy costoso en gas y **no escala**. Si el número de tokens o transferencias crece a miles, la llamada a estas funciones superará el límite de gas de un bloque y fallará, haciendo imposible su ejecución.
     *   **Recomendación:** Estas funciones deben ser utilizadas únicamente "off-chain" (por ejemplo, desde una librería como Ethers.js o Web3.js que puede llamar a funciones `view` sin ejecutar una transacción). Para funcionalidad on-chain, la mejor práctica es **emitir eventos** para cada acción (creación, transferencia, etc.) y usar un servicio externo (un backend o el propio frontend) para indexar estos eventos y construir las listas de tokens o transferencias de un usuario.
     *   **Sugerencia:** Mantén las funciones si son para uso off-chain, pero añade un comentario `@dev` advirtiendo sobre su alto coste de gas y su riesgo de fallo a escala.
-
-*   **Visibilidad de Funciones:**
-    *   **Observación:** Muchas funciones están declaradas como `public`.
-    *   **Recomendación:** Las funciones que solo serán llamadas externamente (por usuarios a través de transacciones) y no por otros contratos pueden ser declaradas como `external`. Esto puede ahorrar una pequeña cantidad de gas porque los argumentos de la función no se copian a `memory`.
-    *   **Sugerencia:** Cambia la visibilidad de `public` a `external` en funciones como `requestUserRole`, `createToken`, `transfer`, etc.
 
 *   **Incrementos `unchecked`:**
     *   **Observación:** Usas `unchecked { nextUserId++; }`.
@@ -46,12 +45,13 @@
     *   **Observación:** Los eventos están bien diseñados, incluyendo parámetros `indexed` para facilitar su búsqueda.
     *   **Recomendación:** El evento `UserStatusChanged` con `oldStatus` y `newStatus` es un gran ejemplo de cómo diseñar eventos útiles para interfaces off-chain.
 
-#### 4. Sugerencias de Funcionalidad (Opcional)
+#### 4. Sugerencias de Funcionalidad
 
-*   **Cancelación de Transferencia por el Emisor:**
-    *   **Sugerencia:** Considera añadir una función `cancelTransfer(uint256 transferId)` que permita al emisor (`from`) de una transferencia `Pending` cancelarla y recuperar sus tokens. Esto da más control al usuario en caso de que el destinatario no responda.
+*   **Cancelación de Transferencia por el Emisor (Implementado y Corregido):**
+    *   **Sugerencia:** Se sugirió añadir una función `cancelTransfer(uint256 transferId)` que permita al emisor (`from`) de una transferencia `Pending` cancelarla.
+    *   **Acción Tomada:** La función `cancelTransfer` ha sido implementada. Tras una revisión, se identificó y corrigió un error en la asignación del estado final de la transferencia. Ahora, la función devuelve correctamente los tokens al emisor y marca la transferencia con el estado `Cancelled`, asegurando una lógica correcta y completa.
 
-*   **Transferencias por Lote (Batch Transfers):**
+*   **Transferencias por Lote (Batch Transfers) (Opcional):**
     *   **Sugerencia:** Para casos de uso donde un usuario necesita enviar tokens a múltiples destinatarios, una función de lote como `transferBatch(address[] calldata recipients, uint256 tokenId, uint256[] calldata amounts)` podría reducir significativamente los costes de gas y la sobrecarga de la red al agrupar muchas operaciones en una sola transacción.
 
 ### Resumen
