@@ -58,8 +58,7 @@ contract Propietario {
      */
     function setPropietario(address _newOwner) external soloPropietario {
         // Es una buena práctica verificar que la nueva dirección no sea la dirección cero.
-        require(_newOwner != address(0), "Error: Direccion invalida
-");
+        require(_newOwner != address(0), "Error: Direccion invalida");
         propietario = _newOwner;
     }
 

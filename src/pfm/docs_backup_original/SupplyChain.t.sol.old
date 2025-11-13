@@ -1,0 +1,559 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.24;
+
+import "forge-std/Test.sol";
+import "../src/pfm/SupplyChain.sol";
+
+contract SupplyChainTest is Test {
+    SupplyChain public supplyChain;
+    address owner;
+    address producer_address;
+    address factory_address;
+    address retailer_address;
+    address consumer_address;
+
+    function setUp() public {
+        owner = address(this);
+        producer_address = makeAddr("producer");
+        factory_address = makeAddr("factory");
+        retailer_address = makeAddr("retailer");
+        consumer_address = makeAddr("consumer");
+        
+        vm.prank(owner);
+        supplyChain = new SupplyChain();
+    }
+
+    // --- Helper Functions ---
+    function _registerAndApproveUser(address userAddr, SupplyChain.UserRole role) internal {
+        vm.prank(userAddr);
+        supplyChain.requestUserRole(role);
+        vm.prank(owner);
+        supplyChain.changeStatusUser(userAddr, SupplyChain.UserStatus.Approved);
+    }
+
+    // --- Tests de gestión de usuarios ---
+
+    function testUserRegistration() public {
+        SupplyChain.UserRole roleToRequest = SupplyChain.UserRole.Producer;
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(roleToRequest);
+        uint256 userId = supplyChain.addressToUserId(producer_address);
+        assertTrue(userId > 0);
+        SupplyChain.User memory user = supplyChain.users(userId);
+        assertEq(user.userAddress, producer_address);
+        assertEq(uint(user.role), uint(roleToRequest));
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending));
+        assertEq(supplyChain.nextUserId(), 2);
+    }
+
+    function testAdminApproveUser() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        uint256 userId = supplyChain.addressToUserId(producer_address);
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+        SupplyChain.User memory user = supplyChain.users(userId);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Approved));
+    }
+
+    function testAdminRejectUser() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        uint256 userId = supplyChain.addressToUserId(producer_address);
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Rejected);
+        SupplyChain.User memory user = supplyChain.users(userId);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Rejected));
+    }
+
+    function testUserStatusChanges() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        uint256 userId = supplyChain.addressToUserId(producer_address);
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+        SupplyChain.User memory user = supplyChain.users(userId);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Approved));
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Rejected);
+        user = supplyChain.users(userId);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Rejected));
+    }
+
+    function testOnlyApprovedUsersCanOperate() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.Unauthorized.selector);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        assertEq(supplyChain.nextTokenId(), 2);
+    }
+
+    function testGetUserInfo() public {
+        SupplyChain.UserRole roleToRequest = SupplyChain.UserRole.Producer;
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(roleToRequest);
+        uint256 userId = supplyChain.addressToUserId(producer_address);
+        SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
+        assertEq(user.id, userId);
+        assertEq(user.userAddress, producer_address);
+        assertEq(uint(user.role), uint(roleToRequest));
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending));
+    }
+
+    function testIsAdmin() public {
+        assertTrue(supplyChain.isAdmin(owner));
+        assertFalse(supplyChain.isAdmin(producer_address));
+    }
+
+    // --- Tests de creación de tokens ---
+
+    function testCreateTokenByProducer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 initialTokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Raw Wood", SupplyChain.TokenType.RowMaterial, 500, "Oak wood", 0);
+        assertEq(supplyChain.nextTokenId(), initialTokenId + 1);
+        (uint256 id, address creator, , , uint256 supply, , uint256 parentId, ) = supplyChain.getToken(initialTokenId);
+        assertEq(id, initialTokenId);
+        assertEq(creator, producer_address);
+        assertEq(supply, 500);
+        assertEq(parentId, 0);
+        assertEq(supplyChain.getTokenBalance(initialTokenId, producer_address), 500);
+    }
+
+    function testCreateTokenByFactory() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 woodTokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
+        uint256 chairTokenId = supplyChain.nextTokenId();
+        vm.prank(factory_address);
+        supplyChain.createToken("Wooden Chair", SupplyChain.TokenType.FinishedProduct, 50, "", woodTokenId);
+        (, , , , , , uint256 parentId, ) = supplyChain.getToken(chairTokenId);
+        assertEq(parentId, woodTokenId);
+    }
+
+    function testCreateTokenByRetailer() public {
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+        vm.prank(retailer_address);
+        vm.expectRevert(SupplyChain.Unauthorized.selector);
+        supplyChain.createToken("Packaged Good", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
+    }
+
+    function testTokenWithParentId() public {
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.ParentTokenDoesNotExist.selector);
+        supplyChain.createToken("Faulty Product", SupplyChain.TokenType.FinishedProduct, 100, "", 999);
+    }
+
+    function testTokenMetadata() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        string memory tokenFeatures = '{"quality": "A+", "origin": "Egypt"}';
+        vm.prank(producer_address);
+        supplyChain.createToken("Premium Cotton", SupplyChain.TokenType.RowMaterial, 1000, tokenFeatures, 0);
+        (, , string memory retrievedName, , , string memory retrievedFeatures, , ) = supplyChain.getToken(tokenId);
+        assertEq(retrievedName, "Premium Cotton");
+        assertEq(retrievedFeatures, tokenFeatures);
+    }
+
+    function testTokenBalance() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
+        assertEq(supplyChain.getTokenBalance(tokenId, producer_address), 1000);
+        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), 0);
+    }
+
+    function testGetToken() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        (uint256 id, address creator, , , uint256 supply, , ,) = supplyChain.getToken(tokenId);
+        assertEq(id, tokenId);
+        assertEq(creator, producer_address);
+        assertEq(supply, 100);
+        vm.expectRevert(SupplyChain.TokenDoesNotExist.selector);
+        supplyChain.getToken(999);
+    }
+
+    function testGetUserTokens() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenA_Id = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        uint256 tokenB_Id = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Metal", SupplyChain.TokenType.RowMaterial, 200, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenB_Id, 200);
+        uint256 transferB_Id = supplyChain.nextTransferId() - 1;
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(transferB_Id);
+        uint[] memory producerTokens = supplyChain.getUserTokens(producer_address);
+        assertEq(producerTokens.length, 1);
+        assertEq(producerTokens[0], tokenA_Id);
+    }
+
+    // --- Tests de transferencias ---
+
+    function testTransferFromProducerToFactory() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
+        uint256 transferId = supplyChain.nextTransferId();
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 300);
+        assertEq(supplyChain.getTokenBalance(tokenId, producer_address), 700);
+        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), 0);
+        (uint256 id, address from, address to, , , uint256 amount, SupplyChain.TransferStatus status) = supplyChain.getTransfer(transferId);
+        assertEq(id, transferId);
+        assertEq(from, producer_address);
+        assertEq(to, factory_address);
+        assertEq(amount, 300);
+        assertEq(uint(status), uint(SupplyChain.TransferStatus.Pending));
+    }
+
+    function testTransferFromFactoryToRetailer() public {
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(factory_address);
+        supplyChain.createToken("Chair", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, tokenId, 50);
+        uint transferId = supplyChain.nextTransferId() - 1;
+        vm.prank(retailer_address);
+        supplyChain.acceptTransfer(transferId);
+        assertEq(supplyChain.getTokenBalance(tokenId, retailer_address), 50);
+    }
+
+    function testTransferFromRetailerToConsumer() public {
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        // We need to give the retailer a token first
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        vm.prank(factory_address);
+        supplyChain.createToken("Product", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, tokenId, 50);
+        uint transferId1 = supplyChain.nextTransferId() - 1;
+        vm.prank(retailer_address);
+        supplyChain.acceptTransfer(transferId1);
+
+        // Now retailer transfers to consumer
+        vm.prank(retailer_address);
+        supplyChain.transfer(consumer_address, tokenId, 20);
+        uint transferId2 = supplyChain.nextTransferId() - 1;
+        vm.prank(consumer_address);
+        supplyChain.acceptTransfer(transferId2);
+        assertEq(supplyChain.getTokenBalance(tokenId, consumer_address), 20);
+    }
+
+    function testAcceptTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 300);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(transferId);
+        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), 300);
+        (, , , , , , SupplyChain.TransferStatus status) = supplyChain.getTransfer(transferId);
+        assertEq(uint(status), uint(SupplyChain.TransferStatus.Accepted));
+    }
+
+    function testRejectTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 300);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.prank(factory_address);
+        supplyChain.rejectTransfer(transferId);
+        assertEq(supplyChain.getTokenBalance(tokenId, producer_address), 1000);
+        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), 0);
+        (, , , , , , SupplyChain.TransferStatus status) = supplyChain.getTransfer(transferId);
+        assertEq(uint(status), uint(SupplyChain.TransferStatus.Rejected));
+    }
+
+    function testTransferInsufficientBalance() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        vm.expectRevert(abi.encodeWithSelector(SupplyChain.InsufficientBalance.selector, 100, 101));
+        supplyChain.transfer(factory_address, tokenId, 101);
+    }
+
+    function testGetTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 300);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        (uint256 id, address from, address to, uint256 tId, , uint256 amount, SupplyChain.TransferStatus status) = supplyChain.getTransfer(transferId);
+        assertEq(id, transferId);
+        assertEq(from, producer_address);
+        assertEq(to, factory_address);
+        assertEq(tId, tokenId);
+        assertEq(amount, 300);
+        assertEq(uint(status), uint(SupplyChain.TransferStatus.Pending));
+    }
+
+    function testGetUserTransfers() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+        uint256 tokenA = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Token A", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        uint256 tokenB = supplyChain.nextTokenId();
+        vm.prank(factory_address);
+        supplyChain.createToken("Token B", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenA, 10);
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, tokenB, 20);
+        uint256 transfer2 = supplyChain.nextTransferId() - 1;
+        vm.prank(factory_address);
+        supplyChain.transfer(producer_address, tokenB, 30);
+        uint[] memory producerTransfers = supplyChain.getUserTransfers(producer_address);
+        assertEq(producerTransfers.length, 2);
+        uint[] memory factoryTransfers = supplyChain.getUserTransfers(factory_address);
+        assertEq(factoryTransfers.length, 3);
+        uint[] memory retailerTransfers = supplyChain.getUserTransfers(retailer_address);
+        assertEq(retailerTransfers.length, 1);
+        assertEq(retailerTransfers[0], transfer2);
+    }
+
+    // --- Tests de validaciones y permisos ---
+
+    function testInvalidRoleTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Final Good", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(consumer_address, tokenId, 50);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.prank(consumer_address);
+        supplyChain.acceptTransfer(transferId);
+        vm.prank(consumer_address);
+        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
+        supplyChain.transfer(producer_address, tokenId, 10);
+    }
+
+    function testUnapprovedUserCannotCreateToken() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.Unauthorized.selector);
+        supplyChain.createToken("Unauthorized Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+    }
+
+    function testUnapprovedUserCannotTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        vm.prank(factory_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
+        supplyChain.transfer(producer_address, tokenId, 10);
+    }
+
+    function testOnlyAdminCanChangeStatus() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.NoOwner.selector);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+    }
+
+    function testConsumerCannotTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Final Good", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(consumer_address, tokenId, 50);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.prank(consumer_address);
+        supplyChain.acceptTransfer(transferId);
+        vm.prank(consumer_address);
+        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
+        supplyChain.transfer(producer_address, tokenId, 10);
+    }
+
+    function testTransferToSameAddress() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(producer_address, tokenId, 10);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        (, , , , , , SupplyChain.TransferStatus status) = supplyChain.getTransfer(transferId);
+        assertEq(uint(status), uint(SupplyChain.TransferStatus.Pending));
+    }
+
+    // --- Tests de casos edge ---
+
+    function testTransferZeroAmount() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.InvalidAmount.selector);
+        supplyChain.transfer(factory_address, tokenId, 0);
+    }
+
+    function testTransferNonExistentToken() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.TokenDoesNotExist.selector);
+        supplyChain.transfer(factory_address, 999, 10);
+    }
+
+    function testAcceptNonExistentTransfer() public {
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.TransferDoesNotExist.selector);
+        supplyChain.acceptTransfer(999);
+    }
+
+    function testDoubleAcceptTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 10);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(transferId);
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.TransferNotPending.selector);
+        supplyChain.acceptTransfer(transferId);
+    }
+
+    function testTransferAfterRejection() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 10);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.prank(factory_address);
+        supplyChain.rejectTransfer(transferId);
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.TransferNotPending.selector);
+        supplyChain.acceptTransfer(transferId);
+    }
+
+    // --- Tests de eventos ---
+
+    function testUserRegisteredEvent() public {
+        vm.expectEmit(true, true, false, false);
+        emit UserRoleRequested(producer_address, SupplyChain.UserRole.Producer);
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+    }
+
+    function testUserStatusChangedEvent() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        vm.expectEmit(true, true, true, true);
+        emit UserStatusChanged(producer_address, SupplyChain.UserStatus.Pending, SupplyChain.UserStatus.Approved);
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+    }
+
+    function testTokenCreatedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.expectEmit(true, true, true, true);
+        emit TokenCreated(tokenId, producer_address, "Test Event Token", SupplyChain.TokenType.RowMaterial, 123, 0);
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Event Token", SupplyChain.TokenType.RowMaterial, 123, "", 0);
+    }
+
+    function testTransferInitiatedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        uint256 transferId = supplyChain.nextTransferId();
+        vm.expectEmit(true, true, true, true);
+        emit TransferRequested(transferId, producer_address, factory_address, tokenId, 50);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 50);
+    }
+
+    function testTransferAcceptedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 50);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.expectEmit(true, false, false, true);
+        emit TransferAccepted(transferId);
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(transferId);
+    }
+
+    function testTransferRejectedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        uint256 tokenId = supplyChain.nextTokenId();
+        vm.prank(producer_address);
+        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, tokenId, 50);
+        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.expectEmit(true, false, false, true);
+        emit TransferRejected(transferId);
+        vm.prank(factory_address);
+        supplyChain.rejectTransfer(transferId);
+    }
+
+    // Tests de flujo completo
+    function testCompleteSupplyChainFlow() public { }
+    function testMultipleTokensFlow() public { }
+    function testTraceabilityFlow() public { }
+}

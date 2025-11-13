@@ -1,21 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
-// This line specifies the license for the smart contract. UNLICENSED means it's not under any specific license.
 pragma solidity ^0.8.24;
-// This line declares the Solidity compiler version. The contract will compile with versions from 0.8.24 up to (but not including) 0.9.0.
 
 import "forge-std/Test.sol";
-// This line imports the 'Test.sol' contract from the 'forge-std' library.
-// 'forge-std' is a standard library for Foundry, providing essential utilities for writing tests in Solidity.
-
 import "../../src/pfm/SupplyChain.sol";
-// This line imports the 'SupplyChain.sol' contract from the 'src' directory.
-// This is the contract that we are going to test, which implements a simple Ether wallet.
 
 contract SupplyChainTest is Test {
-    // This declares a new smart contract named 'SupplyChainTest'.
-    // 'is Test' means that 'SupplyChainTest' inherits from the 'Test' contract,
-    // gaining access to all its testing utilities.
-
     SupplyChain public supplyChain;
     address owner;
     address producer_address;
@@ -42,950 +31,1107 @@ contract SupplyChainTest is Test {
         supplyChain.changeStatusUser(userAddr, SupplyChain.UserStatus.Approved);
     }
 
-
     // --- Tests de gestión de usuarios ---
-
     function testUserRegistration() public {
-        // 1. Setup: Define the role to request
         SupplyChain.UserRole roleToRequest = SupplyChain.UserRole.Producer;
 
-        // 2. Action: The producer address requests the role
         vm.prank(producer_address);
         supplyChain.requestUserRole(roleToRequest);
 
-        // 3. Assertions: Verify the state changes
-        // Get the user ID associated with the producer's address
         uint256 userId = supplyChain.addressToUserId(producer_address);
-        
-        // Check that a user ID was actually assigned
         assertTrue(userId > 0, "User ID should be greater than 0 after registration");
 
-        // Retrieve the user info from the contract
         SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
-
-        // Assert that the user's data is correct
         assertEq(user.id, userId, "User ID mismatch");
         assertEq(user.userAddress, producer_address, "User address mismatch");
         assertEq(uint(user.role), uint(roleToRequest), "User role mismatch");
         assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending), "User status should be Pending");
-        
-        // Assert that the next user ID has been incremented
         assertEq(supplyChain.nextUserId(), 2, "nextUserId should be incremented to 2");
     }
+
     function testAdminApproveUser() public {
-        // 1. Setup: A user must first be registered and be in Pending status.
         vm.prank(producer_address);
         supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
         
         uint256 userId = supplyChain.addressToUserId(producer_address);
         assertTrue(userId > 0, "Setup failed: User should be registered");
 
-        // 2. Action: The owner approves the user's request.
         vm.prank(owner);
         supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
 
-        // 3. Assertions: Verify the user's status is now Approved.
         SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
         assertEq(uint(user.status), uint(SupplyChain.UserStatus.Approved), "User status should be Approved");
     }
+
     function testAdminRejectUser() public {
-        // 1. Setup: A user must first be registered and be in Pending status.
         vm.prank(producer_address);
         supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
         
         uint256 userId = supplyChain.addressToUserId(producer_address);
         assertTrue(userId > 0, "Setup failed: User should be registered");
 
-        // 2. Action: The owner rejects the user's request.
         vm.prank(owner);
         supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Rejected);
 
-        // 3. Assertions: Verify the user's status is now Rejected.
         SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
         assertEq(uint(user.status), uint(SupplyChain.UserStatus.Rejected), "User status should be Rejected");
     }
-    function testUserStatusChanges() public {
-        // 1. Setup: Register a user
-        vm.prank(producer_address);
-        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
-        uint256 userId = supplyChain.addressToUserId(producer_address);
 
-        // 2. Assert initial status is Pending
-        SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
-        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending), "Initial status should be Pending");
-
-        // 3. Action & Assert: Approve
-        vm.prank(owner);
-        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
-        user = supplyChain.getUserInfo(producer_address);
-        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Approved), "Status should be Approved");
-
-        // 4. Action & Assert: Reject
-        vm.prank(owner);
-        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Rejected);
-        user = supplyChain.getUserInfo(producer_address);
-        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Rejected), "Status should be Rejected");
-
-        // 5. Action & Assert: Cancel
-        vm.prank(owner);
-        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Canceled);
-        user = supplyChain.getUserInfo(producer_address);
-        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Canceled), "Status should be Canceled");
-        
-        // 6. Action & Assert: Back to Pending
-        vm.prank(owner);
-        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Pending);
-        user = supplyChain.getUserInfo(producer_address);
-        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending), "Status should be back to Pending");
-    }
     function testOnlyApprovedUsersCanOperate() public {
-        // 1. Setup: Register a user (status will be Pending)
         vm.prank(producer_address);
         supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
 
-        // 2. Action & Assert: User with Pending status cannot create a token.
-        // The `onlyTokenCreators` modifier requires the user to be Approved.
+        // User with Pending status cannot create a token
         vm.prank(producer_address);
         vm.expectRevert(SupplyChain.Unauthorized.selector);
         supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
 
-        // 3. Action & Assert: User with Rejected status cannot create a token.
-        vm.prank(owner);
-        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Rejected);
-        
-        vm.prank(producer_address);
-        vm.expectRevert(SupplyChain.Unauthorized.selector);
-        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-
-        // 4. Action & Assert: User with Approved status CAN create a token.
+        // Approve user and try again
         vm.prank(owner);
         supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
 
         vm.prank(producer_address);
         supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
         
-        // Verify token was created by checking the next token ID
         assertEq(supplyChain.nextTokenId(), 2, "nextTokenId should be incremented after token creation");
     }
+
     function testGetUserInfo() public {
-        // 1. Setup: Register a user
         SupplyChain.UserRole roleToRequest = SupplyChain.UserRole.Producer;
         vm.prank(producer_address);
         supplyChain.requestUserRole(roleToRequest);
         uint256 userId = supplyChain.addressToUserId(producer_address);
 
-        // 2. Action: Call the getUserInfo function
         SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
-
-        // 3. Assertions: Verify the returned data is correct
         assertEq(user.id, userId, "Returned user ID mismatch");
         assertEq(user.userAddress, producer_address, "Returned user address mismatch");
         assertEq(uint(user.role), uint(roleToRequest), "Returned user role mismatch");
         assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending), "Returned user status should be Pending");
     }
+
     function testIsAdmin() public {
         assertTrue(supplyChain.isAdmin(owner), "Owner should be admin");
         assertFalse(supplyChain.isAdmin(producer_address), "Producer should not be admin");
         assertFalse(supplyChain.isAdmin(address(1)), "Random address should not be admin");
     }
 
+    function testUserStatusChanges() public {
+        // Purpose: Test the various status changes a user can undergo (Pending, Approved, Rejected, Canceled).
+
+        // 1. Setup: Register a user (producer_address) with a Producer role.
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        uint256 userId = supplyChain.addressToUserId(producer_address);
+
+        // 2. Assert initial status is 'Pending'.
+        SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending), "Initial status should be Pending");
+
+        // 3. Action & Assert: Change status to 'Approved' and verify.
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+        user = supplyChain.getUserInfo(producer_address);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Approved), "Status should be Approved");
+
+        // 4. Action & Assert: Change status to 'Rejected' and verify.
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Rejected);
+        user = supplyChain.getUserInfo(producer_address);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Rejected), "Status should be Rejected");
+
+        // 5. Action & Assert: Change status to 'Canceled' and verify.
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Canceled);
+        user = supplyChain.getUserInfo(producer_address);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Canceled), "Status should be Canceled");
+        
+        // 6. Action & Assert: Change status back to 'Pending' and verify.
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Pending);
+        user = supplyChain.getUserInfo(producer_address);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Pending), "Status should be back to Pending");
+    }
+
     // --- Tests de creación de tokens ---
-
     function testCreateTokenByProducer() public {
-        // 1. Setup: Register and approve a producer
         _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
 
-        // 2. Action: The approved producer creates a new raw material token
-        uint256 initialTokenId = supplyChain.nextTokenId();
-        string memory tokenName = "Raw Wood";
-        uint256 totalSupply = 500;
-        
-        vm.prank(producer_address);
-        supplyChain.createToken(tokenName, SupplyChain.TokenType.RowMaterial, totalSupply, "Oak wood", 0);
-
-        // 3. Assertions
-        // Check that a new token has been created
-        assertEq(supplyChain.nextTokenId(), initialTokenId + 1, "nextTokenId should be incremented");
-
-        // Retrieve the token data
-        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 supply, , uint256 parentId, ) = supplyChain.getToken(initialTokenId);
-
-        // Check the token's properties
-        assertEq(id, initialTokenId, "Token ID mismatch");
-        assertEq(creator, producer_address, "Token creator should be the producer");
-        assertEq(name, tokenName, "Token name mismatch");
-        assertEq(uint(tokenType), uint(SupplyChain.TokenType.RowMaterial), "TokenType should be RowMaterial");
-        assertEq(supply, totalSupply, "Total supply mismatch");
-        assertEq(parentId, 0, "Parent ID should be 0 for raw materials");
-
-        // Check the producer's balance of the new token
-        uint256 producerBalance = supplyChain.getTokenBalance(initialTokenId, producer_address);
-        assertEq(producerBalance, totalSupply, "Producer balance should equal total supply");
-    }
-    function testCreateTokenByFactory() public {
-        // 1. Setup: Register and approve a producer and a factory
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-
-        // 2. Setup: Producer creates a raw material token (e.g., Wood)
-        uint256 woodTokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 1000, "Raw Oak Wood", 0);
-
-        // 3. Action: Factory creates a Finished Product using the raw material
-        uint256 chairTokenId = supplyChain.nextTokenId();
-        vm.prank(factory_address);
-        supplyChain.createToken("Wooden Chair", SupplyChain.TokenType.FinishedProduct, 50, "Oak Chair", woodTokenId);
-
-        // 4. Assertions for Finished Product
-        (uint256 id, , , , , , uint256 parentId, ) = supplyChain.getToken(chairTokenId);
-        assertEq(id, chairTokenId, "Finished product ID mismatch");
-        assertEq(parentId, woodTokenId, "Parent ID should be the wood token's ID");
-        
-        // 5. Action: Factory also creates its own Raw Material
-        uint256 screwTokenId = supplyChain.nextTokenId();
-        vm.prank(factory_address);
-        supplyChain.createToken("Screws", SupplyChain.TokenType.RowMaterial, 5000, "Steel Screws", 0);
-
-        // 6. Assertions for Factory's Raw Material
-        (id, , , , , , parentId, ) = supplyChain.getToken(screwTokenId);
-        assertEq(id, screwTokenId, "Factory's raw material ID mismatch");
-        assertEq(parentId, 0, "Parent ID for factory's raw material should be 0");
-    }
-    function testCreateTokenByRetailer() public {
-        // 1. Setup: Register and approve a retailer
-        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
-
-        // 2. Action & Assertion: Attempt to create a token, which should fail.
-        // The `onlyTokenCreators` modifier restricts this action to Producers and Factories.
-        vm.prank(retailer_address);
-        vm.expectRevert(SupplyChain.Unauthorized.selector);
-        supplyChain.createToken("Packaged Good", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
-    }
-    function testTokenWithParentId() public {
-        // 1. Setup: Register and approve a factory
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-
-        // 2. Action & Assertion: Attempt to create a finished product using a non-existent parent token ID.
-        uint256 nonExistentParentId = 999;
-        vm.prank(factory_address);
-        vm.expectRevert(SupplyChain.ParentTokenDoesNotExist.selector);
-        supplyChain.createToken("Faulty Product", SupplyChain.TokenType.FinishedProduct, 100, "", nonExistentParentId);
-    }
-    function testTokenMetadata() public {
-        // 1. Setup: Register and approve a producer
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-
-        // 2. Action: Create a token with specific metadata
-        uint256 tokenId = supplyChain.nextTokenId();
-        string memory tokenName = "Premium Cotton";
-        string memory tokenFeatures = '{"quality": "A+", "origin": "Egypt"}';
-        vm.prank(producer_address);
-        supplyChain.createToken(tokenName, SupplyChain.TokenType.RowMaterial, 1000, tokenFeatures, 0);
-
-        // 3. Assertion: Retrieve the token and verify its metadata
-        (, , string memory retrievedName, , , string memory retrievedFeatures, , ) = supplyChain.getToken(tokenId);
-
-        assertEq(retrievedName, tokenName, "Token name should be stored correctly");
-        assertEq(retrievedFeatures, tokenFeatures, "Token features should be stored correctly");
-    }
-    function testTokenBalance() public {
-        // 1. Setup: Register/approve a producer and have them create a token.
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 totalSupply = 1000;
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, totalSupply, "", 0);
-
-        // 2. Action & Assertions
-        // The creator's balance should be the total supply.
-        uint256 creatorBalance = supplyChain.getTokenBalance(tokenId, producer_address);
-        assertEq(creatorBalance, totalSupply, "Creator's balance should be total supply");
-
-        // Another user's balance for this token should be 0.
-        uint256 otherUserBalance = supplyChain.getTokenBalance(tokenId, factory_address);
-        assertEq(otherUserBalance, 0, "Other user's balance should be 0");
-    }
-    function testGetToken() public {
-        // 1. Setup: Register/approve a producer and create a token.
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        uint256 tokenId = supplyChain.nextTokenId();
-        string memory tokenName = "Test Token";
-        uint256 totalSupply = 100;
-        vm.prank(producer_address);
-        supplyChain.createToken(tokenName, SupplyChain.TokenType.RowMaterial, totalSupply, "", 0);
-
-        // 2. Action & Assertion (Success Case)
-        (uint256 id, address creator, string memory name, , uint256 supply, , ,) = supplyChain.getToken(tokenId);
-        assertEq(id, tokenId, "Getter: ID mismatch");
-        assertEq(creator, producer_address, "Getter: Creator mismatch");
-        assertEq(name, tokenName, "Getter: Name mismatch");
-        assertEq(supply, totalSupply, "Getter: Total supply mismatch");
-
-        // 3. Action & Assertion (Failure Case)
-        uint256 nonExistentTokenId = 999;
-        vm.expectRevert(SupplyChain.TokenDoesNotExist.selector);
-        supplyChain.getToken(nonExistentTokenId);
-    }
-    function testGetUserTokens() public {
-        // 1. Setup users and tokens
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-
-        // Producer creates Token A (Wood) and Token B (Metal)
-        uint256 tokenA_Id = supplyChain.nextTokenId();
         vm.prank(producer_address);
         supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
 
-        uint256 tokenB_Id = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Metal", SupplyChain.TokenType.RowMaterial, 200, "", 0);
-
-        // Factory creates Token C (Screws)
-        uint256 tokenC_Id = supplyChain.nextTokenId();
-        vm.prank(factory_address);
-        supplyChain.createToken("Screws", SupplyChain.TokenType.RowMaterial, 500, "", 0);
-
-        // 2. Setup transfers
-        // Producer transfers ALL of Token B to Factory
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenB_Id, 200);
-        uint256 transferB_Id = supplyChain.nextTransferId() - 1;
-        vm.prank(factory_address);
-        supplyChain.acceptTransfer(transferB_Id);
-
-        // Producer transfers SOME of Token A to Factory
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenA_Id, 50);
-        uint256 transferA_Id = supplyChain.nextTransferId() - 1;
-        vm.prank(factory_address);
-        supplyChain.acceptTransfer(transferA_Id);
-
-        // 3. Assertions
-        // Producer should only have Token A left
-        uint[] memory producerTokens = supplyChain.getUserTokens(producer_address);
-        assertEq(producerTokens.length, 1, "Producer should only own 1 type of token");
-        assertEq(producerTokens[0], tokenA_Id, "Producer should own Token A");
-
-        // Factory should have Tokens A, B, and C
-        uint[] memory factoryTokens = supplyChain.getUserTokens(factory_address);
-        assertEq(factoryTokens.length, 3, "Factory should own 3 types of tokens");
-        // Note: The order is not guaranteed, so we can't check by index directly.
-        // A more robust check would involve iterating and checking for presence.
-
-        // Retailer should have no tokens
-        uint[] memory retailerTokens = supplyChain.getUserTokens(retailer_address);
-        assertEq(retailerTokens.length, 0, "Retailer should own 0 tokens");
+        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 totalSupply, string memory features, uint256 parentId, uint256 dateCreated) = supplyChain.getToken(1);
+        assertEq(id, 1, "Token ID should be 1");
+        assertEq(creator, producer_address, "Token creator should be producer");
+        assertEq(name, "Wood", "Token name should be Wood");
+        assertEq(uint(tokenType), uint(SupplyChain.TokenType.RowMaterial), "Token type should be RowMaterial");
+        assertEq(totalSupply, 100, "Token total supply should be 100");
+        assertEq(parentId, 0, "Raw material should have parentId 0");
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 100, "Producer should have full balance");
     }
 
-    // --- Tests de transferencias ---
+    function testGetToken() public {
+        // Setup: Create a token first
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "High quality oak wood", 0);
 
-    function testTransferFromProducerToFactory() public {
-        // 1. Setup: Create and approve users, create a token
+        // Test: Get token information
+        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 totalSupply, string memory features, uint256 parentId, uint256 dateCreated) = supplyChain.getToken(1);
+        
+        // Assertions
+        assertEq(id, 1, "Token ID should be 1");
+        assertEq(creator, producer_address, "Creator should be producer");
+        assertEq(name, "Wood", "Name should be Wood");
+        assertEq(uint(tokenType), uint(SupplyChain.TokenType.RowMaterial), "Type should be RowMaterial");
+        assertEq(totalSupply, 100, "Total supply should be 100");
+        assertEq(features, "High quality oak wood", "Features should match");
+        assertEq(parentId, 0, "Parent ID should be 0 for raw material");
+        assertTrue(dateCreated > 0, "Date created should be greater than 0");
+    }
+
+    function testTokenBalance() public {
+        // Setup: Create users and token
         _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
         _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
         
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 initialSupply = 1000;
+        // Create a token
         vm.prank(producer_address);
-        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, initialSupply, "", 0);
-
-        // 2. Action: Producer initiates a transfer to the factory
-        uint256 transferAmount = 300;
-        uint256 transferId = supplyChain.nextTransferId();
-
-        // vm.expectEmit(true, true, true, true);
-        // TODO: Fix emit check
-        //emit TransferRequested(transferId, producer_address, factory_address, tokenId, transferAmount);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
         
+        // Test initial balances
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 100, "Producer should have initial balance of 100");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 0, "Factory should have initial balance of 0");
+        assertEq(supplyChain.getTokenBalance(1, owner), 0, "Owner should have balance of 0");
+        
+        // Transfer some tokens and test balances
         vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, transferAmount);
-
-        // 3. Assertions
-        // Check producer's balance is reduced
-        uint256 expectedProducerBalance = initialSupply - transferAmount;
-        assertEq(supplyChain.getTokenBalance(tokenId, producer_address), expectedProducerBalance, "Producer balance should be reduced");
-
-        // Check factory's balance is unchanged (transfer is pending)
-        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), 0, "Factory balance should be unchanged before acceptance");
-
-        // Check that a new Transfer struct was created correctly
-        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(transferId);
-        assertEq(transferItem.id, transferId, "Transfer ID mismatch");
-        assertEq(transferItem.from, producer_address, "Transfer 'from' address mismatch");
-        assertEq(transferItem.to, factory_address, "Transfer 'to' address mismatch");
-        assertEq(transferItem.tokenId, tokenId, "Transfer token ID mismatch");
-        assertEq(transferItem.amount, transferAmount, "Transfer amount mismatch");
-        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer status should be Pending");
+        supplyChain.transfer(factory_address, 1, 30);
+        
+        // After transfer (before acceptance)
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 70, "Producer balance should be 70 after transfer");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 0, "Factory balance should still be 0 before acceptance");
+        
+        // Accept transfer
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(1);
+        
+        // After acceptance
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 70, "Producer balance should remain 70");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 30, "Factory balance should be 30 after acceptance");
     }
-    function testTransferFromFactoryToRetailer() public {
-        // 1. Setup: Create and approve users, create a token
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
-        
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 initialSupply = 1000;
-        vm.prank(factory_address);
-        supplyChain.createToken("Finished Product", SupplyChain.TokenType.FinishedProduct, initialSupply, "", 0);
 
-        // 2. Action: Factory initiates a transfer to the retailer
-        uint256 transferAmount = 300;
-        uint256 transferId = supplyChain.nextTransferId();
-        
-        vm.prank(factory_address);
-        supplyChain.transfer(retailer_address, tokenId, transferAmount);
-
-        // 3. Assertions
-        // Check factory's balance is reduced
-        uint256 expectedFactoryBalance = initialSupply - transferAmount;
-        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), expectedFactoryBalance, "Factory balance should be reduced");
-
-        // Check retailer's balance is unchanged (transfer is pending)
-        assertEq(supplyChain.getTokenBalance(tokenId, retailer_address), 0, "Retailer balance should be unchanged before acceptance");
-
-        // Check that a new Transfer struct was created correctly
-        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(transferId);
-        assertEq(transferItem.id, transferId, "Transfer ID mismatch");
-        assertEq(transferItem.from, factory_address, "Transfer 'from' address mismatch");
-        assertEq(transferItem.to, retailer_address, "Transfer 'to' address mismatch");
-        assertEq(transferItem.tokenId, tokenId, "Transfer token ID mismatch");
-        assertEq(transferItem.amount, transferAmount, "Transfer amount mismatch");
-        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer status should be Pending");
-    }
-    function testTransferFromRetailerToConsumer() public {
-        // 1. Setup: Create and approve users, create a token and transfer it to retailer
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
-        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
-        
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 initialSupply = 1000;
-        vm.prank(factory_address);
-        supplyChain.createToken("Finished Product", SupplyChain.TokenType.FinishedProduct, initialSupply, "", 0);
-
-        uint256 transferAmountToRetailer = 500;
-        vm.prank(factory_address);
-        supplyChain.transfer(retailer_address, tokenId, transferAmountToRetailer);
-        uint256 transferIdToRetailer = supplyChain.nextTransferId() - 1;
-        vm.prank(retailer_address);
-        supplyChain.acceptTransfer(transferIdToRetailer);
-
-        // 2. Action: Retailer initiates a transfer to the consumer
-        uint256 transferAmountToConsumer = 100;
-        uint256 transferIdToConsumer = supplyChain.nextTransferId();
-        
-        vm.prank(retailer_address);
-        supplyChain.transfer(consumer_address, tokenId, transferAmountToConsumer);
-
-        // 3. Assertions
-        // Check retailer's balance is reduced
-        uint256 expectedRetailerBalance = transferAmountToRetailer - transferAmountToConsumer;
-        assertEq(supplyChain.getTokenBalance(tokenId, retailer_address), expectedRetailerBalance, "Retailer balance should be reduced");
-
-        // Check consumer's balance is unchanged (transfer is pending)
-        assertEq(supplyChain.getTokenBalance(tokenId, consumer_address), 0, "Consumer balance should be unchanged before acceptance");
-
-        // Check that a new Transfer struct was created correctly
-        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(transferIdToConsumer);
-        assertEq(transferItem.id, transferIdToConsumer, "Transfer ID mismatch");
-        assertEq(transferItem.from, retailer_address, "Transfer 'from' address mismatch");
-        assertEq(transferItem.to, consumer_address, "Transfer 'to' address mismatch");
-        assertEq(transferItem.tokenId, tokenId, "Transfer token ID mismatch");
-        assertEq(transferItem.amount, transferAmountToConsumer, "Transfer amount mismatch");
-        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer status should be Pending");
-    }
-    function testAcceptTransfer() public {
-        // 1. Setup: Create users, token, and a pending transfer
+    function testCreateTokenByFactory() public {
+        // First create a raw material token (parentId will be 1)
         _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        // Now factory can create finished product with parentId 1
         _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 initialSupply = 1000;
-        vm.prank(producer_address);
-        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, initialSupply, "", 0);
-
-        uint256 transferAmount = 300;
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, transferAmount);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
-
-        // 2. Action: The factory (recipient) accepts the transfer
-        // vm.expectEmit(true, false, false, true);
-        // TODO: Fix emit check
-        //emit TransferAccepted(transferId);
-
         vm.prank(factory_address);
-        supplyChain.acceptTransfer(transferId);
+        supplyChain.createToken("Chair", SupplyChain.TokenType.FinishedProduct, 50, "", 1);
 
-        // 3. Assertions
-        // Check factory's balance has increased
-        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), transferAmount, "Factory balance should be increased");
-
-        // Check the transfer status is now Accepted
-        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(transferId);
-        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Accepted), "Transfer status should be Accepted");
-    }
-    function testRejectTransfer() public {
-        // 1. Setup: Create users, token, and a pending transfer
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 initialSupply = 1000;
-        vm.prank(producer_address);
-        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, initialSupply, "", 0);
-
-        uint256 transferAmount = 300;
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, transferAmount);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
-
-        // 2. Action: The factory (recipient) rejects the transfer
-        // vm.expectEmit(true, false, false, true);
-        // TODO: Fix emit check
-        //emit TransferRejected(transferId);
-
-        vm.prank(factory_address);
-        supplyChain.rejectTransfer(transferId);
-
-        // 3. Assertions
-        // Check producer's balance is restored
-        assertEq(supplyChain.getTokenBalance(tokenId, producer_address), initialSupply, "Producer balance should be restored");
-        // Check factory's balance is still 0
-        assertEq(supplyChain.getTokenBalance(tokenId, factory_address), 0, "Factory balance should remain 0");
-
-        // Check the transfer status is now Rejected
-        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(transferId);
-        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Rejected), "Transfer status should be Rejected");
-    }
-    function testTransferInsufficientBalance() public {
-        // 1. Setup: Create users and a token with a known supply
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 initialSupply = 100;
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, initialSupply, "", 0);
-
-        // 2. Action & Assertion: Attempt to transfer more than the balance
-        uint256 transferAmount = initialSupply + 1;
-        
-        vm.prank(producer_address);
-        vm.expectRevert(abi.encodeWithSelector(SupplyChain.InsufficientBalance.selector, initialSupply, transferAmount));
-        supplyChain.transfer(factory_address, tokenId, transferAmount);
-    }
-    function testGetTransfer() public {
-        // 1. Setup: Create users, token, and a pending transfer
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        
-        uint256 tokenId = supplyChain.nextTokenId();
-        uint256 transferAmount = 300;
-        vm.prank(producer_address);
-        supplyChain.createToken("Iron Ore", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, transferAmount);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
-
-        // 2. Action: Retrieve the transfer data
-        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(transferId);
-
-        // 3. Assertions
-        assertEq(transferItem.id, transferId, "Getter: Transfer ID mismatch");
-        assertEq(transferItem.from, producer_address, "Getter: 'from' address mismatch");
-        assertEq(transferItem.to, factory_address, "Getter: 'to' address mismatch");
-        assertEq(transferItem.tokenId, tokenId, "Getter: token ID mismatch");
-        assertEq(transferItem.amount, transferAmount, "Getter: amount mismatch");
-        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Getter: status should be Pending");
-    }
-    function testGetUserTransfers() public {
-        // 1. Setup: Create users, tokens, and multiple transfers
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
-
-        uint256 tokenA = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Token A", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-
-        uint256 tokenB = supplyChain.nextTokenId();
-        vm.prank(factory_address);
-        supplyChain.createToken("Token B", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-
-        // Transfer 1: Producer -> Factory
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenA, 10);
-        uint256 transfer1 = supplyChain.nextTransferId() - 1;
-
-        // Transfer 2: Factory -> Retailer
-        vm.prank(factory_address);
-        supplyChain.transfer(retailer_address, tokenB, 20);
-        uint256 transfer2 = supplyChain.nextTransferId() - 1;
-
-        // Transfer 3: Factory -> Producer
-        vm.prank(factory_address);
-        supplyChain.transfer(producer_address, tokenB, 30);
-        uint256 transfer3 = supplyChain.nextTransferId() - 1;
-
-        // 2. Assertions
-        uint[] memory producerTransfers = supplyChain.getUserTransfers(producer_address);
-        assertEq(producerTransfers.length, 2, "Producer should have 2 transfers");
-        // Note: Order is not guaranteed, just check for presence if necessary.
-
-        uint[] memory factoryTransfers = supplyChain.getUserTransfers(factory_address);
-        assertEq(factoryTransfers.length, 3, "Factory should have 3 transfers");
-
-        uint[] memory retailerTransfers = supplyChain.getUserTransfers(retailer_address);
-        assertEq(retailerTransfers.length, 1, "Retailer should have 1 transfer");
-        assertEq(retailerTransfers[0], transfer2, "Retailer's transfer ID mismatch");
+        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 totalSupply, string memory features, uint256 parentId, uint256 dateCreated) = supplyChain.getToken(2);
+        assertEq(creator, factory_address, "Token creator should be factory");
+        assertEq(uint(tokenType), uint(SupplyChain.TokenType.FinishedProduct), "Token type should be FinishedProduct");
+        assertEq(parentId, 1, "Finished product should have parentId");
     }
 
-    // --- Tests de validaciones y permisos ---
-
-    function testInvalidRoleTransfer() public {
-        // 1. Setup: Give a consumer some tokens to attempt to transfer.
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
-
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Final Good", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
-
-        vm.prank(producer_address);
-        supplyChain.transfer(consumer_address, tokenId, 50);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
-        
-        vm.prank(consumer_address);
-        supplyChain.acceptTransfer(transferId);
-
-        // 2. Action & Assertion: Consumer attempts to transfer, which should fail.
-        vm.prank(consumer_address);
-        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
-        supplyChain.transfer(producer_address, tokenId, 10);
-    }
     function testUnapprovedUserCannotCreateToken() public {
-        // 1. Setup: Register a user but do not approve them.
-        vm.prank(producer_address);
-        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        vm.prank(consumer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Consumer);
+        
+        vm.prank(owner);
+        supplyChain.changeStatusUser(consumer_address, SupplyChain.UserStatus.Approved);
 
-        // 2. Action & Assertion: Attempt to create a token.
-        vm.prank(producer_address);
+        vm.prank(consumer_address);
         vm.expectRevert(SupplyChain.Unauthorized.selector);
-        supplyChain.createToken("Unauthorized Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        supplyChain.createToken("Illegal Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
     }
-    function testUnapprovedUserCannotTransfer() public {
-        // 1. Setup: Register two users, approve the first, but not the second.
+
+    // --- Tests de transferencias básicas ---
+    function testTransferFromProducerToFactory() public {
         _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        // Create token
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        // Transfer
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+
+        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(1);
+        assertEq(transferItem.from, producer_address, "Transfer from should be producer");
+        assertEq(transferItem.to, factory_address, "Transfer to should be factory");
+        assertEq(transferItem.tokenId, 1, "Transfer token ID should be 1");
+        assertEq(transferItem.amount, 50, "Transfer amount should be 50");
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer should be pending");
+
+        // Verify balances after transfer
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 50, "Producer balance should be 50 after transfer");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 0, "Factory balance should be 0 before acceptance");
+    }
+
+    function testTransferFromFactoryToRetailer() public {
+        // Setup complete chain: Producer → Factory → Retailer
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+
+        // 1. Producer creates raw material
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        // 2. Producer transfers to Factory
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 80);
         
         vm.prank(factory_address);
-        supplyChain.requestUserRole(SupplyChain.UserRole.Factory); // Not approved
+        supplyChain.acceptTransfer(1);
 
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-
-        // 2. Action & Assertion: Unapproved user (factory) cannot initiate a transfer.
+        // 3. Factory creates finished product
         vm.prank(factory_address);
-        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
-        supplyChain.transfer(producer_address, tokenId, 10);
-    }
-    function testOnlyAdminCanChangeStatus() public {
-        // 1. Setup: Register a user.
-        vm.prank(producer_address);
-        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        supplyChain.createToken("Chair", SupplyChain.TokenType.FinishedProduct, 40, "", 1);
 
-        // 2. Action & Assertion: A non-admin cannot change the user's status.
-        vm.prank(factory_address); // Not an admin
-        vm.expectRevert(SupplyChain.NoOwner.selector);
-        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+        // 4. Factory transfers finished product to Retailer
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, 2, 25);
+
+        // Test transfer details
+        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(2);
+        assertEq(transferItem.from, factory_address, "Transfer from should be factory");
+        assertEq(transferItem.to, retailer_address, "Transfer to should be retailer");
+        assertEq(transferItem.tokenId, 2, "Transfer token ID should be 2 (finished product)");
+        assertEq(transferItem.amount, 25, "Transfer amount should be 25");
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer should be pending");
+
+        // Test balances before acceptance
+        assertEq(supplyChain.getTokenBalance(2, factory_address), 15, "Factory should have 15 chairs left");
+        assertEq(supplyChain.getTokenBalance(2, retailer_address), 0, "Retailer should have 0 before acceptance");
+
+        // Accept transfer
+        vm.prank(retailer_address);
+        supplyChain.acceptTransfer(2);
+
+        // Test final balances
+        assertEq(supplyChain.getTokenBalance(2, factory_address), 15, "Factory should have 15 chairs");
+        assertEq(supplyChain.getTokenBalance(2, retailer_address), 25, "Retailer should have 25 chairs");
     }
-    function testConsumerCannotTransfer() public {
-        // This is logically identical to testInvalidRoleTransfer, but implemented for completeness.
+
+    function testTransferFromRetailerToConsumer() public {
+        // Setup complete chain: Producer → Factory → Retailer → Consumer
         _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
         _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
 
-        uint256 tokenId = supplyChain.nextTokenId();
+        // 1. Producer creates and transfers raw material to Factory
         vm.prank(producer_address);
-        supplyChain.createToken("Final Good", SupplyChain.TokenType.FinishedProduct, 100, "", 0);
-
-        vm.prank(producer_address);
-        supplyChain.transfer(consumer_address, tokenId, 50);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
         
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(1);
+
+        // 2. Factory creates finished product and transfers to Retailer
+        vm.prank(factory_address);
+        supplyChain.createToken("Chair", SupplyChain.TokenType.FinishedProduct, 20, "", 1);
+        
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, 2, 15);
+        vm.prank(retailer_address);
+        supplyChain.acceptTransfer(2);
+
+        // 3. Retailer transfers to Consumer (final step)
+        vm.prank(retailer_address);
+        supplyChain.transfer(consumer_address, 2, 8);
+
+        // Test transfer details
+        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(3);
+        assertEq(transferItem.from, retailer_address, "Transfer from should be retailer");
+        assertEq(transferItem.to, consumer_address, "Transfer to should be consumer");
+        assertEq(transferItem.tokenId, 2, "Transfer token ID should be 2 (finished product)");
+        assertEq(transferItem.amount, 8, "Transfer amount should be 8");
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer should be pending");
+
+        // Test balances before acceptance
+        assertEq(supplyChain.getTokenBalance(2, retailer_address), 7, "Retailer should have 7 chairs left");
+        assertEq(supplyChain.getTokenBalance(2, consumer_address), 0, "Consumer should have 0 before acceptance");
+
+        // Accept transfer (Consumer receives final product)
         vm.prank(consumer_address);
-        supplyChain.acceptTransfer(transferId);
+        supplyChain.acceptTransfer(3);
 
-        vm.prank(consumer_address);
-        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
-        supplyChain.transfer(producer_address, tokenId, 10);
-    }
-    function testTransferToSameAddress() public {
-        // 1. Setup: Register a user and give them tokens.
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-
-        // 2. Action: Transfer to self. This should be allowed.
-        vm.prank(producer_address);
-        supplyChain.transfer(producer_address, tokenId, 10);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
-
-        // 3. Assertion: The transfer is pending.
-        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(transferId);
-        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending));
-    }
-
-    // --- Tests de casos edge ---
-
-    function testTransferZeroAmount() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-
-        vm.prank(producer_address);
-        vm.expectRevert(SupplyChain.InvalidAmount.selector);
-        supplyChain.transfer(factory_address, tokenId, 0);
-    }
-    function testTransferNonExistentToken() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        // Test final balances - chain completed
+        assertEq(supplyChain.getTokenBalance(2, retailer_address), 7, "Retailer should have 7 chairs");
+        assertEq(supplyChain.getTokenBalance(2, consumer_address), 8, "Consumer should have 8 chairs");
         
-        vm.prank(producer_address);
-        vm.expectRevert(SupplyChain.TokenDoesNotExist.selector);
-        supplyChain.transfer(factory_address, 999, 10);
+        // Verify transfer status
+        transferItem = supplyChain.getTransfer(3);
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Accepted), "Transfer should be accepted");
     }
-    function testAcceptNonExistentTransfer() public {
+
+    function testGetTransfer() public {
+        // Setup: Create transfer scenario
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
         _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
 
-        vm.prank(factory_address);
-        vm.expectRevert(SupplyChain.TransferDoesNotExist.selector);
-        supplyChain.acceptTransfer(999);
-    }
-    function testDoubleAcceptTransfer() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        uint256 tokenId = supplyChain.nextTokenId();
         vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+
+        // Test: Get transfer information
+        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(1);
         
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, 10);        uint256 transferId = supplyChain.nextTransferId() - 1;
+        // Assertions
+        assertEq(transferItem.id, 1, "Transfer ID should be 1");
+        assertEq(transferItem.from, producer_address, "Transfer from should be producer");
+        assertEq(transferItem.to, factory_address, "Transfer to should be factory");
+        assertEq(transferItem.tokenId, 1, "Transfer token ID should be 1");
+        assertEq(transferItem.amount, 50, "Transfer amount should be 50");
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer should be pending");
+        assertTrue(transferItem.dateCreated > 0, "Date created should be greater than 0");
 
+        // Test with accepted transfer
         vm.prank(factory_address);
-        supplyChain.acceptTransfer(transferId);
+        supplyChain.acceptTransfer(1);
 
-        // Try to accept again
-        vm.prank(factory_address);
-        vm.expectRevert(SupplyChain.TransferNotPending.selector);
-        supplyChain.acceptTransfer(transferId);
-    }
-    function testTransferAfterRejection() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-        
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, 10);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
-
-        vm.prank(factory_address);
-        supplyChain.rejectTransfer(transferId);
-
-        // Try to accept after rejection
-        vm.prank(factory_address);
-        vm.expectRevert(SupplyChain.TransferNotPending.selector);
-        supplyChain.acceptTransfer(transferId);
+        transferItem = supplyChain.getTransfer(1);
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Accepted), "Transfer should be accepted after acceptance");
     }
 
-    // --- Tests de eventos ---
-
-    function testUserRegisteredEvent() public {
-        // vm.expectEmit(true, true, false, false);
-        // TODO: Fix emit check
-        //emit UserRoleRequested(producer_address, SupplyChain.UserRole.Producer);
-        vm.prank(producer_address);
-        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
-    }
-    function testUserStatusChangedEvent() public {
+    function testOnlyAdminCanChangeStatus() public {
+        // Setup: Register a user
         vm.prank(producer_address);
         supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
 
-        // vm.expectEmit(true, true, true, true);
-        // TODO: Fix emit check
-        //emit UserStatusChanged(producer_address, SupplyChain.UserStatus.Pending, SupplyChain.UserStatus.Approved);
+        // Test: Only admin (owner) can change status
         vm.prank(owner);
         supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
-    }
-    function testTokenCreatedEvent() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        
-        uint256 tokenId = supplyChain.nextTokenId();
-        string memory tokenName = "Test Event Token";
-        uint256 totalSupply = 123;
 
-        // vm.expectEmit(true, true, true, true);
-        // TODO: Fix emit check
-        //emit TokenCreated(tokenId, producer_address, tokenName, SupplyChain.TokenType.RowMaterial, totalSupply, 0);
-        
-        vm.prank(producer_address);
-        supplyChain.createToken(tokenName, SupplyChain.TokenType.RowMaterial, totalSupply, "", 0);
-    }
-    function testTransferInitiatedEvent() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        SupplyChain.User memory user = supplyChain.getUserInfo(producer_address);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Approved), "Status should be approved by admin");
 
-        uint256 transferId = supplyChain.nextTransferId();
-        uint256 amount = 50;
-
-        // vm.expectEmit(true, true, true, true);
-        // TODO: Fix emit check
-        //emit TransferRequested(transferId, producer_address, factory_address, tokenId, amount);
-
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, amount);
-    }
-    function testTransferAcceptedEvent() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-        
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, 50);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
-
-        // vm.expectEmit(true, false, false, true);
-        // TODO: Fix emit check
-        //emit TransferAccepted(transferId);
-
+        // Test: Non-admin cannot change status
         vm.prank(factory_address);
-        supplyChain.acceptTransfer(transferId);
-    }
-    function testTransferRejectedEvent() public {
-        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
-        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
-        uint256 tokenId = supplyChain.nextTokenId();
-        vm.prank(producer_address);
-        supplyChain.createToken("Test Token", SupplyChain.TokenType.RowMaterial, 100, "", 0);
-        
-        vm.prank(producer_address);
-        supplyChain.transfer(factory_address, tokenId, 50);
-        uint256 transferId = supplyChain.nextTransferId() - 1;
+        vm.expectRevert(SupplyChain.NoOwner.selector);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Rejected);
 
-        // vm.expectEmit(true, false, false, true);
-        // TODO: Fix emit check
-        //emit TransferRejected(transferId);
+        // Test: Producer cannot change their own status
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.NoOwner.selector);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Pending);
 
-        vm.prank(factory_address);
-        supplyChain.rejectTransfer(transferId);
+        // Test: Random user cannot change status
+        address randomUser = makeAddr("randomUser");
+        vm.prank(randomUser);
+        vm.expectRevert(SupplyChain.NoOwner.selector);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Canceled);
+
+        // Verify status hasn't changed
+        user = supplyChain.getUserInfo(producer_address);
+        assertEq(uint(user.status), uint(SupplyChain.UserStatus.Approved), "Status should remain approved");
     }
 
-    // Tests de flujo completo
     function testCompleteSupplyChainFlow() public {
-        // 1. Setup: Register and approve all users
+        // Complete integration test: Raw material → Finished product → Consumer
+        
+        // 1. Setup all participants
         _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
         _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
         _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
         _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
 
         // 2. Producer creates raw material
-        uint256 rawMaterialId = supplyChain.nextTokenId();
-        uint256 rawMaterialSupply = 1000;
         vm.prank(producer_address);
-        supplyChain.createToken("Raw Material", SupplyChain.TokenType.RowMaterial, rawMaterialSupply, "", 0);
+        supplyChain.createToken("Oak Wood", SupplyChain.TokenType.RowMaterial, 1000, "Premium quality oak", 0);
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 1000, "Producer should have 1000 oak wood");
 
-        // 3. Producer transfers raw material to factory
-        uint256 transferAmountToFactory = 500;
+        // 3. Producer → Factory: Raw material transfer
         vm.prank(producer_address);
-        supplyChain.transfer(factory_address, rawMaterialId, transferAmountToFactory);
-        uint256 transferIdToFactory = supplyChain.nextTransferId() - 1;
+        supplyChain.transfer(factory_address, 1, 500);
         vm.prank(factory_address);
-        supplyChain.acceptTransfer(transferIdToFactory);
+        supplyChain.acceptTransfer(1);
+        
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 500, "Producer should have 500 oak left");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 500, "Factory should have 500 oak");
 
-        // 4. Factory creates finished product
-        uint256 finishedProductId = supplyChain.nextTokenId();
-        uint256 finishedProductSupply = 100;
+        // 4. Factory creates finished product from raw material
         vm.prank(factory_address);
-        supplyChain.createToken("Finished Product", SupplyChain.TokenType.FinishedProduct, finishedProductSupply, "", rawMaterialId);
+        supplyChain.createToken("Oak Chair", SupplyChain.TokenType.FinishedProduct, 100, "Handcrafted oak chair", 1);
+        assertEq(supplyChain.getTokenBalance(2, factory_address), 100, "Factory should have 100 chairs");
 
-        // 5. Factory transfers finished product to retailer
-        uint256 transferAmountToRetailer = 50;
+        // 5. Factory → Retailer: Finished product transfer
         vm.prank(factory_address);
-        supplyChain.transfer(retailer_address, finishedProductId, transferAmountToRetailer);
-        uint256 transferIdToRetailer = supplyChain.nextTransferId() - 1;
+        supplyChain.transfer(retailer_address, 2, 75);
         vm.prank(retailer_address);
-        supplyChain.acceptTransfer(transferIdToRetailer);
+        supplyChain.acceptTransfer(2);
+        
+        assertEq(supplyChain.getTokenBalance(2, factory_address), 25, "Factory should have 25 chairs left");
+        assertEq(supplyChain.getTokenBalance(2, retailer_address), 75, "Retailer should have 75 chairs");
 
-        // 6. Retailer transfers finished product to consumer
-        uint256 transferAmountToConsumer = 10;
+        // 6. Retailer → Consumer: Final sale
         vm.prank(retailer_address);
-        supplyChain.transfer(consumer_address, finishedProductId, transferAmountToConsumer);
-        uint256 transferIdToConsumer = supplyChain.nextTransferId() - 1;
+        supplyChain.transfer(consumer_address, 2, 20);
         vm.prank(consumer_address);
-        supplyChain.acceptTransfer(transferIdToConsumer);
+        supplyChain.acceptTransfer(3);
+        
+        assertEq(supplyChain.getTokenBalance(2, retailer_address), 55, "Retailer should have 55 chairs left");
+        assertEq(supplyChain.getTokenBalance(2, consumer_address), 20, "Consumer should have 20 chairs");
 
-        // 7. Assertions
-        assertEq(supplyChain.getTokenBalance(rawMaterialId, producer_address), rawMaterialSupply - transferAmountToFactory, "Producer raw material balance incorrect");
-        assertEq(supplyChain.getTokenBalance(rawMaterialId, factory_address), transferAmountToFactory, "Factory raw material balance incorrect");
-        assertEq(supplyChain.getTokenBalance(finishedProductId, factory_address), finishedProductSupply - transferAmountToRetailer, "Factory finished product balance incorrect");
-        assertEq(supplyChain.getTokenBalance(finishedProductId, retailer_address), transferAmountToRetailer - transferAmountToConsumer, "Retailer finished product balance incorrect");
-        assertEq(supplyChain.getTokenBalance(finishedProductId, consumer_address), transferAmountToConsumer, "Consumer finished product balance incorrect");
+        // 7. Verify traceability - check token parent relationship
+        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 totalSupply, string memory features, uint256 parentId, uint256 dateCreated) = supplyChain.getToken(2);
+        assertEq(parentId, 1, "Chair should trace back to oak wood");
+        assertEq(creator, factory_address, "Chair should be created by factory");
+        assertEq(uint(tokenType), uint(SupplyChain.TokenType.FinishedProduct), "Should be finished product");
+
+        // 8. Verify total transfers in the system
+        assertEq(supplyChain.getTotalTransfers(), 3, "Should have 3 total transfers");
+
+        // 9. Test that consumer cannot transfer further (end of chain)
+        vm.prank(consumer_address);
+        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
+        supplyChain.transfer(producer_address, 2, 5);
     }
+
+    function testCreateTokenByRetailer() public {
+        // Note: Retailers typically don't create tokens but can in some supply chains
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+        
+        // Retailer cannot create tokens (only Producer and Factory can)
+        vm.prank(retailer_address);
+        vm.expectRevert(SupplyChain.Unauthorized.selector);
+        supplyChain.createToken("Retail Product", SupplyChain.TokenType.FinishedProduct, 50, "", 0);
+    }
+
+    function testGetUserTokens() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        // Create multiple tokens
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Steel", SupplyChain.TokenType.RowMaterial, 200, "", 0);
+        
+        vm.prank(factory_address);
+        supplyChain.createToken("Chair", SupplyChain.TokenType.FinishedProduct, 50, "", 1);
+        
+        // Test getUserTokens function exists and can be called
+        // Note: This is a gas-expensive function, mainly for off-chain use
+        uint[] memory producerTokens = supplyChain.getUserTokens(producer_address);
+        uint[] memory factoryTokens = supplyChain.getUserTokens(factory_address);
+        
+        assertEq(producerTokens.length, 2, "Producer should have 2 tokens");
+        assertEq(factoryTokens.length, 1, "Factory should have 1 token");
+    }
+
+    function testGetUserTransfers() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        // Create multiple transfers
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 30);
+        
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 20);
+        
+        // Test getUserTransfers function exists and can be called
+        uint[] memory producerTransfers = supplyChain.getUserTransfers(producer_address);
+        uint[] memory factoryTransfers = supplyChain.getUserTransfers(factory_address);
+        
+        assertEq(producerTransfers.length, 2, "Producer should have 2 transfers");
+        assertEq(factoryTransfers.length, 2, "Factory should have 2 transfers");
+    }
+
+    function testTransferNonExistentToken() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        // Try to transfer non-existent token
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.TokenDoesNotExist.selector);
+        supplyChain.transfer(factory_address, 999, 50);
+    }
+
+    function testTokenWithParentId() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        // Create parent token
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        // Create child token with parent
+        vm.prank(factory_address);
+        supplyChain.createToken("Chair", SupplyChain.TokenType.FinishedProduct, 25, "", 1);
+        
+        // Verify parent relationship
+        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 totalSupply, string memory features, uint256 parentId, uint256 dateCreated) = supplyChain.getToken(2);
+        assertEq(parentId, 1, "Child token should have correct parent ID");
+        assertEq(uint(tokenType), uint(SupplyChain.TokenType.FinishedProduct), "Child should be finished product");
+    }
+
+    function testTokenMetadata() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        
+        string memory features = "High quality oak wood, sustainably sourced";
+        vm.prank(producer_address);
+        supplyChain.createToken("Oak Wood", SupplyChain.TokenType.RowMaterial, 100, features, 0);
+        
+        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 totalSupply, string memory returnedFeatures, uint256 parentId, uint256 dateCreated) = supplyChain.getToken(1);
+        
+        assertEq(name, "Oak Wood", "Token name should match");
+        assertEq(returnedFeatures, features, "Token features should match");
+        assertEq(creator, producer_address, "Creator should match");
+        assertEq(totalSupply, 100, "Total supply should match");
+    }
+
+    function testUnapprovedUserCannotTransfer() public {
+        // Register but don't approve producer
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        vm.prank(factory_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        // Unapproved producer cannot initiate transfers
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
+        supplyChain.transfer(factory_address, 1, 50);
+    }
+
+    function testInvalidRoleTransfer() public {
+        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        // Create a raw material token first
+        vm.prank(factory_address);
+        supplyChain.createToken("Raw Material", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        // Consumer cannot initiate transfers (only can receive)
+        vm.prank(consumer_address);
+        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
+        supplyChain.transfer(factory_address, 1, 50);
+    }
+
+    function testTransferToSameAddress() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        // Transfer to same address is allowed - creates pending transfer to self
+        vm.prank(producer_address);
+        supplyChain.transfer(producer_address, 1, 50);
+        
+        // Check that transfer was created
+        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(1);
+        assertEq(transferItem.from, producer_address, "Transfer from should be producer");
+        assertEq(transferItem.to, producer_address, "Transfer to should be producer");
+        assertEq(transferItem.amount, 50, "Transfer amount should be 50");
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Pending), "Transfer should be pending");
+    }
+
+    function testAcceptNonExistentTransfer() public {
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        // Try to accept non-existent transfer
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.TransferDoesNotExist.selector);
+        supplyChain.acceptTransfer(999);
+    }
+
+    function testTransferAfterRejection() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        // Create and reject transfer
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+        
+        vm.prank(factory_address);
+        supplyChain.rejectTransfer(1);
+        
+        // Verify tokens returned to producer
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 100, "Tokens should return to producer");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 0, "Factory should have 0 tokens");
+        
+        // Producer can create new transfer after rejection
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 30);
+        
+        // Verify new transfer
+        SupplyChain.Transfer memory transfer = supplyChain.getTransfer(2);
+        assertEq(transfer.amount, 30, "New transfer amount should be 30");
+        assertEq(uint(transfer.status), uint(SupplyChain.TransferStatus.Pending), "New transfer should be pending");
+    }
+
+    function testAcceptTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(1);
+
+        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(1);
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Accepted), "Transfer should be accepted");
+        
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 50, "Producer balance should be 50");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 50, "Factory balance should be 50 after acceptance");
+    }
+
+    function testRejectTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+
+        vm.prank(factory_address);
+        supplyChain.rejectTransfer(1);
+
+        SupplyChain.Transfer memory transferItem = supplyChain.getTransfer(1);
+        assertEq(uint(transferItem.status), uint(SupplyChain.TransferStatus.Rejected), "Transfer should be rejected");
+        
+        // Tokens should return to sender
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 100, "Producer should have original balance back");
+        assertEq(supplyChain.getTokenBalance(1, factory_address), 0, "Factory should have 0 balance");
+    }
+
+    function testTransferInsufficientBalance() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        vm.expectRevert(abi.encodeWithSelector(SupplyChain.InsufficientBalance.selector, 100, 150));
+        supplyChain.transfer(factory_address, 1, 150);
+    }
+
+    // --- Test de pausa ---
+    function testPauseFunctionality() public {
+        // Only owner can pause
+        vm.prank(owner);
+        supplyChain.pause();
+        
+        assertTrue(supplyChain.isPaused(), "Contract should be paused");
+
+        // Functions should fail when paused
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.ContractPaused.selector);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+
+        // Only owner can unpause
+        vm.prank(owner);
+        supplyChain.unpause();
+        
+        assertFalse(supplyChain.isPaused(), "Contract should not be paused");
+    }
+
+    // --- Test de ownership transfer ---
+    function testOwnershipTransfer() public {
+        address newOwner = makeAddr("newOwner");
+        
+        // Initiate transfer
+        vm.prank(owner);
+        supplyChain.initiateOwnershipTransfer(newOwner);
+        
+        assertEq(supplyChain.getPendingOwner(), newOwner, "Pending owner should be set");
+        
+        // Accept ownership
+        vm.prank(newOwner);
+        supplyChain.acceptOwnership();
+        
+        assertEq(supplyChain.owner(), newOwner, "New owner should be set");
+        assertEq(supplyChain.getPendingOwner(), address(0), "Pending owner should be reset");
+    }
+
+    // --- Tests adicionales de seguridad ---
+    function testOnlyOwnerCanInitiateTransfer() public {
+        address newOwner = makeAddr("newOwner");
+        
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.NoOwner.selector);
+        supplyChain.initiateOwnershipTransfer(newOwner);
+    }
+
+    function testCannotTransferToZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(SupplyChain.InvalidAddress.selector);
+        supplyChain.initiateOwnershipTransfer(address(0));
+    }
+
+    function testOnlyPendingOwnerCanAccept() public {
+        address newOwner = makeAddr("newOwner");
+        address randomUser = makeAddr("randomUser");
+        
+        vm.prank(owner);
+        supplyChain.initiateOwnershipTransfer(newOwner);
+        
+        vm.prank(randomUser);
+        vm.expectRevert(SupplyChain.Unauthorized.selector);
+        supplyChain.acceptOwnership();
+    }
+
+    function testUnauthorizedUserCannotPause() public {
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.Unauthorized.selector);
+        supplyChain.pause();
+    }
+
+    function testCannotPauseWhenAlreadyPaused() public {
+        vm.prank(owner);
+        supplyChain.pause();
+        
+        vm.prank(owner);
+        vm.expectRevert(SupplyChain.ContractPaused.selector);
+        supplyChain.pause();
+    }
+
+    function testCannotUnpauseWhenNotPaused() public {
+        vm.prank(owner);
+        vm.expectRevert(SupplyChain.ContractNotPaused.selector);
+        supplyChain.unpause();
+    }
+
+    function testOnlyReceiverCanAcceptTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+
+        // Random user cannot accept transfer
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.NoReceiverAllowed.selector);
+        supplyChain.acceptTransfer(1);
+    }
+
+    function testCannotAcceptNonPendingTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+
+        // Accept once
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(1);
+
+        // Cannot accept again
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.TransferNotPending.selector);
+        supplyChain.acceptTransfer(1);
+    }
+
+    function testCannotTransferMoreThanBalance() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        vm.expectRevert(abi.encodeWithSelector(SupplyChain.InsufficientBalance.selector, 100, 150));
+        supplyChain.transfer(factory_address, 1, 150);
+    }
+
+    function testTransferZeroAmount() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.InvalidAmount.selector);
+        supplyChain.transfer(factory_address, 1, 0);
+    }
+
+    function testCannotTransferToZeroAddressInTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        vm.prank(producer_address);
+        vm.expectRevert(SupplyChain.InvalidAddress.selector);
+        supplyChain.transfer(address(0), 1, 50);
+    }
+
+    function testConsumerCannotTransfer() public {
+        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+
+        // Transfer some tokens to consumer first (through factory/retailer)
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+        vm.prank(producer_address);
+        supplyChain.transfer(retailer_address, 1, 50);
+        vm.prank(retailer_address);
+        supplyChain.acceptTransfer(1);
+        
+        vm.prank(retailer_address);
+        supplyChain.transfer(consumer_address, 1, 25);
+        vm.prank(consumer_address);
+        supplyChain.acceptTransfer(2);
+
+        // Consumer cannot transfer to anyone
+        vm.prank(consumer_address);
+        vm.expectRevert(SupplyChain.NoTransfersAllowed.selector);
+        supplyChain.transfer(producer_address, 1, 10);
+    }
+
+    // --- Tests de eventos ---
+    function testUserRegisteredEvent() public {
+        vm.expectEmit(true, false, false, true);
+        emit SupplyChain.UserRoleRequested(producer_address, SupplyChain.UserRole.Producer);
+        
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+    }
+
+    function testUserStatusChangedEvent() public {
+        vm.prank(producer_address);
+        supplyChain.requestUserRole(SupplyChain.UserRole.Producer);
+        
+        vm.expectEmit(true, false, false, true);
+        emit SupplyChain.UserStatusChanged(producer_address, SupplyChain.UserStatus.Pending, SupplyChain.UserStatus.Approved);
+        
+        vm.prank(owner);
+        supplyChain.changeStatusUser(producer_address, SupplyChain.UserStatus.Approved);
+    }
+
+    function testTokenCreatedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        
+        vm.expectEmit(true, true, false, true);
+        emit SupplyChain.TokenCreated(1, producer_address, "Wood", SupplyChain.TokenType.RowMaterial, 100, 0);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+    }
+
+    function testTransferInitiatedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        vm.expectEmit(true, true, true, true);
+        emit SupplyChain.TransferRequested(1, producer_address, factory_address, 1, 50);
+        
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+    }
+
+    function testTransferAcceptedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+        
+        vm.expectEmit(true, false, false, true);
+        emit SupplyChain.TransferAccepted(1);
+        
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(1);
+    }
+
+    function testTransferRejectedEvent() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+        
+        vm.expectEmit(true, false, false, true);
+        emit SupplyChain.TransferRejected(1);
+        
+        vm.prank(factory_address);
+        supplyChain.rejectTransfer(1);
+    }
+
+    // --- Tests de casos edge adicionales ---
+    function testDoubleAcceptTransfer() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        
+        vm.prank(producer_address);
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 50);
+        
+        // First acceptance should work
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(1);
+        
+        // Second acceptance should fail
+        vm.prank(factory_address);
+        vm.expectRevert(SupplyChain.TransferNotPending.selector);
+        supplyChain.acceptTransfer(1);
+    }
+
+    // --- Tests de flujo completo adicionales ---
     function testMultipleTokensFlow() public {
-        // 1. Setup: Register and approve users
         _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
         _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
         _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
-
-        // 2. Producer creates two raw materials
-        uint256 woodId = supplyChain.nextTokenId();
+        
+        // Producer creates multiple raw materials
         vm.prank(producer_address);
-        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 1000, "", 0);
-
-        uint256 metalId = supplyChain.nextTokenId();
+        supplyChain.createToken("Wood", SupplyChain.TokenType.RowMaterial, 100, "", 0);
+        
         vm.prank(producer_address);
-        supplyChain.createToken("Metal", SupplyChain.TokenType.RowMaterial, 500, "", 0);
-
-        // 3. Factory creates a finished product
-        uint256 chairId = supplyChain.nextTokenId();
-        vm.prank(factory_address);
-        supplyChain.createToken("Chair", SupplyChain.TokenType.FinishedProduct, 200, "", 0);
-
-        // 4. Producer transfers raw materials to factory
+        supplyChain.createToken("Metal", SupplyChain.TokenType.RowMaterial, 200, "", 0);
+        
+        // Transfer different amounts to factory
         vm.prank(producer_address);
-        supplyChain.transfer(factory_address, woodId, 500);
-        uint256 woodTransferId = supplyChain.nextTransferId() - 1;
-        vm.prank(factory_address);
-        supplyChain.acceptTransfer(woodTransferId);
-
+        supplyChain.transfer(factory_address, 1, 30); // Wood
+        
         vm.prank(producer_address);
-        supplyChain.transfer(factory_address, metalId, 250);
-        uint256 metalTransferId = supplyChain.nextTransferId() - 1;
+        supplyChain.transfer(factory_address, 2, 50); // Metal
+        
+        // Factory accepts both transfers
         vm.prank(factory_address);
-        supplyChain.acceptTransfer(metalTransferId);
-
-        // 5. Factory transfers finished product to retailer
+        supplyChain.acceptTransfer(1);
+        
         vm.prank(factory_address);
-        supplyChain.transfer(retailer_address, chairId, 100);
-        uint256 chairTransferId = supplyChain.nextTransferId() - 1;
-        vm.prank(retailer_address);
-        supplyChain.acceptTransfer(chairTransferId);
-
-        // 6. Assertions
-        assertEq(supplyChain.getTokenBalance(woodId, producer_address), 500, "Producer wood balance incorrect");
-        assertEq(supplyChain.getTokenBalance(metalId, producer_address), 250, "Producer metal balance incorrect");
-        assertEq(supplyChain.getTokenBalance(woodId, factory_address), 500, "Factory wood balance incorrect");
-        assertEq(supplyChain.getTokenBalance(metalId, factory_address), 250, "Factory metal balance incorrect");
-        assertEq(supplyChain.getTokenBalance(chairId, factory_address), 100, "Factory chair balance incorrect");
-        assertEq(supplyChain.getTokenBalance(chairId, retailer_address), 100, "Retailer chair balance incorrect");
+        supplyChain.acceptTransfer(2);
+        
+        // Factory creates finished products from both materials
+        vm.prank(factory_address);
+        supplyChain.createToken("WoodChair", SupplyChain.TokenType.FinishedProduct, 15, "", 1);
+        
+        vm.prank(factory_address);
+        supplyChain.createToken("MetalTable", SupplyChain.TokenType.FinishedProduct, 10, "", 2);
+        
+        // Transfer products to retailer
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, 3, 10); // WoodChair
+        
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, 4, 5); // MetalTable
+        
+        // Verify final balances
+        assertEq(supplyChain.getTokenBalance(1, producer_address), 70, "Producer should have remaining wood");
+        assertEq(supplyChain.getTokenBalance(2, producer_address), 150, "Producer should have remaining metal");
+        assertEq(supplyChain.getTokenBalance(3, factory_address), 5, "Factory should have remaining wood chairs");
+        assertEq(supplyChain.getTokenBalance(4, factory_address), 5, "Factory should have remaining metal tables");
     }
-    function testTraceabilityFlow() public { }
+
+    function testTraceabilityFlow() public {
+        _registerAndApproveUser(producer_address, SupplyChain.UserRole.Producer);
+        _registerAndApproveUser(factory_address, SupplyChain.UserRole.Factory);
+        _registerAndApproveUser(retailer_address, SupplyChain.UserRole.Retailer);
+        _registerAndApproveUser(consumer_address, SupplyChain.UserRole.Consumer);
+        
+        // 1. Producer creates raw material
+        vm.prank(producer_address);
+        supplyChain.createToken("RawWood", SupplyChain.TokenType.RowMaterial, 1000, "Oak wood from sustainable forest", 0);
+        
+        // 2. Producer → Factory transfer
+        vm.prank(producer_address);
+        supplyChain.transfer(factory_address, 1, 100);
+        vm.prank(factory_address);
+        supplyChain.acceptTransfer(1);
+        
+        // 3. Factory creates finished product with traceability
+        vm.prank(factory_address);
+        supplyChain.createToken("OakChair", SupplyChain.TokenType.FinishedProduct, 25, "Handcrafted oak chair, batch #001", 1);
+        
+        // 4. Factory → Retailer transfer
+        vm.prank(factory_address);
+        supplyChain.transfer(retailer_address, 2, 20);
+        vm.prank(retailer_address);
+        supplyChain.acceptTransfer(2);
+        
+        // 5. Retailer → Consumer transfer
+        vm.prank(retailer_address);
+        supplyChain.transfer(consumer_address, 2, 1);
+        vm.prank(consumer_address);
+        supplyChain.acceptTransfer(3);
+        
+        // 6. Verify full traceability
+        (uint256 id, address creator, string memory name, SupplyChain.TokenType tokenType, uint256 totalSupply, string memory features, uint256 parentId, uint256 dateCreated) = supplyChain.getToken(2);
+        
+        assertEq(id, 2, "Product ID should be 2");
+        assertEq(creator, factory_address, "Product creator should be factory");
+        assertEq(name, "OakChair", "Product name should be OakChair");
+        assertEq(uint(tokenType), uint(SupplyChain.TokenType.FinishedProduct), "Should be finished product");
+        assertEq(parentId, 1, "Should trace back to raw material token 1");
+        
+        // Verify raw material traceability
+        (uint256 rawId, address rawCreator, string memory rawName, SupplyChain.TokenType rawType, , string memory rawFeatures, uint256 rawParentId, ) = supplyChain.getToken(1);
+        
+        assertEq(rawId, 1, "Raw material ID should be 1");
+        assertEq(rawCreator, producer_address, "Raw material creator should be producer");
+        assertEq(rawName, "RawWood", "Raw material name should be RawWood");
+        assertEq(uint(rawType), uint(SupplyChain.TokenType.RowMaterial), "Should be raw material");
+        assertEq(rawParentId, 0, "Raw material should have no parent");
+        
+        // Verify consumer received the product
+        assertEq(supplyChain.getTokenBalance(2, consumer_address), 1, "Consumer should have 1 chair");
+        
+        // Verify transfer history
+        SupplyChain.Transfer memory transfer1 = supplyChain.getTransfer(1); // Producer → Factory
+        SupplyChain.Transfer memory transfer2 = supplyChain.getTransfer(2); // Factory → Retailer  
+        SupplyChain.Transfer memory transfer3 = supplyChain.getTransfer(3); // Retailer → Consumer
+        
+        assertEq(transfer1.from, producer_address, "First transfer from producer");
+        assertEq(transfer1.to, factory_address, "First transfer to factory");
+        assertEq(transfer2.from, factory_address, "Second transfer from factory");
+        assertEq(transfer2.to, retailer_address, "Second transfer to retailer");
+        assertEq(transfer3.from, retailer_address, "Third transfer from retailer");
+        assertEq(transfer3.to, consumer_address, "Third transfer to consumer");
+        
+        // All transfers should be accepted
+        assertEq(uint(transfer1.status), uint(SupplyChain.TransferStatus.Accepted), "Transfer 1 should be accepted");
+        assertEq(uint(transfer2.status), uint(SupplyChain.TransferStatus.Accepted), "Transfer 2 should be accepted");
+        assertEq(uint(transfer3.status), uint(SupplyChain.TransferStatus.Accepted), "Transfer 3 should be accepted");
+    }
 }

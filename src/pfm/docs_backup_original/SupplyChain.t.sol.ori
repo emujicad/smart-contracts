@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: UNLICENSED
+// This line specifies the license for the smart contract. UNLICENSED means it's not under any specific license.
+pragma solidity ^0.8.24;
+// This line declares the Solidity compiler version. The contract will compile with versions from 0.8.24 up to (but not including) 0.9.0.
+
+import "forge-std/Test.sol";
+// This line imports the 'Test.sol' contract from the 'forge-std' library.
+// 'forge-std' is a standard library for Foundry, providing essential utilities for writing tests in Solidity.
+
+import "../../../src/pfm/SupplyChain.sol";
+// This line imports the 'SupplyChain.sol' contract from the 'src' directory.
+// This is the contract that we are going to test, which implements a simple Ether wallet.
+
+contract SupplyChainTest is Test {
+    // This declares a new smart contract named 'SupplyChainTest'.
+    // 'is Test' means that 'SupplyChainTest' inherits from the 'Test' contract,
+    // gaining access to all its testing utilities.
+
+    SupplyChain public supplyChain;
+    // This declares a state variable 'supplyChain' of type 'SupplyChain'.
+    // This variable will hold an instance of the 'SupplyChain' contract, allowing us to interact with it in our tests.
+
+    function setUp() public {
+        // The `setUp()` function is a special function in Foundry tests.
+        // It is executed before *each* test function (any function starting with `test`).
+        // This is useful for setting up a fresh state for every test, ensuring tests are independent.
+
+        supplyChain = new SupplyChain();
+        // This line deploys a new instance of the 'SupplyChain' contract and assigns its address to 'supplyChain'.
+        // Each test will get its own fresh instance of the contract.
+    }
+    // Tests de gestión de usuarios
+    function testUserRegistration() public { }
+    function testAdminApproveUser() public { }
+    function testAdminRejectUser() public { }
+    function testUserStatusChanges() public { }
+    function testOnlyApprovedUsersCanOperate() public { }
+    function testGetUserInfo() public { }
+    function testIsAdmin() public { }
+
+    // Tests de creación de tokens
+    function testCreateTokenByProducer() public { }
+    function testCreateTokenByFactory() public { }
+    function testCreateTokenByRetailer() public { }
+    function testTokenWithParentId() public { }
+    function testTokenMetadata() public { }
+    function testTokenBalance() public { }
+    function testGetToken() public { }
+    function testGetUserTokens() public { }
+
+    // Tests de transferencias
+    function testTransferFromProducerToFactory() public { }
+    function testTransferFromFactoryToRetailer() public { }
+    function testTransferFromRetailerToConsumer() public { }
+    function testAcceptTransfer() public { }
+    function testRejectTransfer() public { }
+    function testTransferInsufficientBalance() public { }
+    function testGetTransfer() public { }
+    function testGetUserTransfers() public { }
+
+    // Tests de validaciones y permisos
+    function testInvalidRoleTransfer() public { }
+    function testUnapprovedUserCannotCreateToken() public { }
+    function testUnapprovedUserCannotTransfer() public { }
+    function testOnlyAdminCanChangeStatus() public { }
+    function testConsumerCannotTransfer() public { }
+    function testTransferToSameAddress() public { }
+
+    // Tests de casos edge
+    function testTransferZeroAmount() public { }
+    function testTransferNonExistentToken() public { }
+    function testAcceptNonExistentTransfer() public { }
+    function testDoubleAcceptTransfer() public { }
+    function testTransferAfterRejection() public { }
+
+    // Tests de eventos
+    function testUserRegisteredEvent() public { }
+    function testUserStatusChangedEvent() public { }
+    function testTokenCreatedEvent() public { }
+    function testTransferInitiatedEvent() public { }
+    function testTransferAcceptedEvent() public { }
+    function testTransferRejectedEvent() public { }
+
+    // Tests de flujo completo
+    function testCompleteSupplyChainFlow() public { }
+    function testMultipleTokensFlow() public { }
+    function testTraceabilityFlow() public { }
+}
