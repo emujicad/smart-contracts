@@ -13,8 +13,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title SupplyChain
- * @notice Solucion de SupplyChain  para uso educativo: modelo de empresas, productos y facturas.
- * @notice Este contrato inteligente simula una plataforma de SupplyChain básica en la blockchain.
+ * @notice Solucion de SupplyChain. Este contrato inteligente simula una plataforma de SupplyChain básica en la blockchain.
  * @dev Incluye control de acceso por usuario, validaciones, errores personalizados, contadores para IDs automáticos,
  *      eventos para la comunicación con el exterior y funciones de consulta (getters) completas.
  * @dev IMPORTANTE: Este contrato no maneja transferencias de fondos (criptomonedas), solo registra datos.
